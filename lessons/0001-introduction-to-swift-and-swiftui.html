@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lesson 1: Introduction to Swift & SwiftUI (A Beginner's Lens)</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            color: #111;
+            background-color: #fffff8;
+            line-height: 1.6;
+            max-width: 720px;
+            margin: 40px auto;
+            padding: 0 20px;
+            text-rendering: optimizeLegibility;
+        }
+
+        h1 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 400;
+            font-style: italic;
+            font-size: 2.2rem;
+            line-height: 1.2;
+            margin-bottom: 0.5rem;
+            color: #111;
+        }
+
+        h2 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 300;
+            font-size: 1.5rem;
+            margin-top: 2rem;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            color: #333;
+        }
+
+        p {
+            margin-bottom: 1.5rem;
+            font-size: 1.05rem;
+        }
+
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.9em;
+            background-color: #f7f7f7;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        pre {
+            background-color: #f7f7f7;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid #e0e0e0;
+        }
+
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            font-size: 0.9rem;
+        }
+
+        .highlight-box {
+            background-color: #f2f7f2;
+            border-left: 3px solid #2e7d32;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .quiz-container {
+            background-color: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .quiz-option {
+            display: block;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-size: 0.95rem;
+            text-align: left;
+            width: 100%;
+        }
+
+        .quiz-option:hover {
+            background: #f0f0f0;
+            border-color: #888;
+        }
+
+        .quiz-feedback {
+            margin-top: 15px;
+            font-weight: bold;
+            display: none;
+            font-family: "Helvetica Neue", Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Lesson 1: Swift & SwiftUI Basics through Zoro's Eyes</h1>
+    <p>Welcome! If you are new to Apple's ecosystem, the code in Zoro might look a bit unfamiliar at first. Don't worry! Swift is an elegant, modern language, and SwiftUI makes building user interfaces incredibly straightforward once you understand a few key patterns.</p>
+    
+    <p>In this lesson, we will cover the core grammar of Swift and the declarative mental model of SwiftUI, using Zoro's actual source code as our guide.</p>
+
+    <h2>1. Swift Foundations: Variables & Constants</h2>
+    <p>In Swift, you define data using either <code>let</code> or <code>var</code>:</p>
+    <ul>
+        <li><code>let</code> defines a <strong>constant</strong> (a value that can never change once set).</li>
+        <li><code>var</code> defines a <strong>variable</strong> (a value that can be modified later).</li>
+    </ul>
+    <p>Let's look at a snippet from Zoro's <code>ClarifyTool.swift</code>:</p>
+    <pre><code class="language-swift">struct ClarifyTool: Tool {
+    let name = "clarify" // Constant: This tool's identifier is always "clarify"
+    
+    @Generable
+    struct Arguments {
+        var question: String // Variable: The question will change per execution
+    }
+}</code></pre>
+
+    <h2>2. Optionals: Handling Missing Data</h2>
+    <p>One of Swift's most famous features is <strong>safety</strong>. By default, variables cannot be empty (or <code>nil</code>). If a variable is allowed to have no value, you must explicitly mark it with a question mark (<code>?</code>). This is called an <strong>Optional</strong>.</p>
+    <p>In Zoro's <code>WorkspaceManager.swift</code>, the selected workspace path is optional because when the app first launches, no folder has been selected yet:</p>
+    <pre><code class="language-swift">var workspaceURL: URL? = nil // '?' means it can hold a URL OR be nil</code></pre>
+    <p>Before you can use an optional's value, you must "unwrap" it safely. Zoro frequently uses the <code>guard let</code> statement for this:</p>
+    <pre><code class="language-swift">guard let workspaceURL = WorkspaceManager.shared.workspaceURL else {
+    return "Error: No workspace directory selected." 
+}
+// If workspaceURL was nil, the function exits early above.
+// Otherwise, workspaceURL is now safely unwrapped and ready to use below!</code></pre>
+
+    <h2>3. Structs (Value) vs. Classes (Reference)</h2>
+    <p>Swift uses both structs and classes to group data and behavior. However, they manage memory differently:</p>
+    <ul>
+        <li>
+            <strong>Structs</strong> are copied when passed around. They are lightweight and ideal for data containers. In Zoro, all tools and chat messages are structs (e.g., <code>struct ChatMessage</code>).
+        </li>
+        <li>
+            <strong>Classes</strong> are shared references. Multiple parts of your app can point to and edit the same class instance. Zoro's <code>WorkspaceManager</code> is a class because we want the exact same state holder shared across the UI and all tool executions.
+        </li>
+    </ul>
+
+    <h2>4. Declarative UI: How SwiftUI Updates</h2>
+    <p>In older frameworks, you had to write step-by-step instructions to change the UI (e.g., "Find the text field, change its text, change its color to red"). SwiftUI is <strong>declarative</strong>: you describe how the view should look based on the current state. When state changes, SwiftUI automatically updates the screen.</p>
+    <p>To do this, SwiftUI uses <strong>property wrappers</strong> (variables starting with <code>@</code>):</p>
+    <ul>
+        <li><code>@Published</code>: Tells SwiftUI to watch this variable. When it changes, tell the views.</li>
+        <li><code>@StateObject</code>: Creates and keeps a shared manager class (like <code>WorkspaceManager</code>) alive inside a View.</li>
+    </ul>
+    <div class="highlight-box">
+        <p><strong>The Zoro Connection:</strong> In <code>ContentView.swift</code>, the view holds <code>@StateObject private var workspace = WorkspaceManager.shared</code>. Inside `WorkspaceManager`, the list of tasks is <code>@Published var activeTodos: [TodoItem] = []</code>. Because of this, the moment an LLM adds a task to the todo list in the background, the UI instantly redraws to display it!</p>
+    </div>
+
+    <h2>Retrieval Practice</h2>
+    <p>Let's check your understanding before moving forward!</p>
+
+    <div class="quiz-container">
+        <p><strong>Question:</strong> What does the <code>?</code> in <code>var tavilyApiKey: String?</code> mean?</p>
+        
+        <button class="quiz-option" onclick="selectOption(1)">
+            A. It is a syntax error; variable names cannot contain question marks.
+        </button>
+        <button class="quiz-option" onclick="selectOption(2)">
+            B. It means the value is an Optional, meaning it can either contain a String (the key) or be empty (nil) if the key has not been entered yet.
+        </button>
+        <button class="quiz-option" onclick="selectOption(3)">
+            C. It is a special query string variable used for making network requests.
+        </button>
+
+        <div id="quiz-feedback" class="quiz-feedback"></div>
+    </div>
+
+    <script>
+        function selectOption(num) {
+            const feedback = document.getElementById("quiz-feedback");
+            feedback.style.display = "block";
+            if (num === 2) {
+                feedback.innerHTML = "✨ Correct! Optionals allow Swift to safely handle situations where data might be missing, preventing crashes. Before using it, we unwrap it using 'guard let' or similar checks.";
+                feedback.style.color = "#1b5e20";
+            } else {
+                feedback.innerHTML = "❌ Try again. Remember that Swift variables are strict about being non-empty unless marked with a '?'. Check the Optionals section above!";
+                feedback.style.color = "#b71c1c";
+            }
+        }
+    </script>
+</body>
+</html>

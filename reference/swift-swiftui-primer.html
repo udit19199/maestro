@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zoro: Swift & SwiftUI Primer</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            color: #111;
+            background-color: #fffff8;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+            text-rendering: optimizeLegibility;
+        }
+
+        h1 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 300;
+            font-style: italic;
+            font-size: 2.5rem;
+            margin-bottom: 0.2rem;
+            color: #111;
+        }
+
+        .subtitle {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 2rem;
+            font-style: italic;
+        }
+
+        h2 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 400;
+            font-size: 1.6rem;
+            margin-top: 2.5rem;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 6px;
+            color: #222;
+        }
+
+        h3 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 500;
+            font-size: 1.15rem;
+            margin-top: 1.8rem;
+            color: #444;
+        }
+
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 0.9em;
+            background-color: #f7f7f7;
+            padding: 2px 5px;
+            border-radius: 3px;
+            border: 1px solid #e0e0e0;
+        }
+
+        pre {
+            background-color: #f7f7f7;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid #e0e0e0;
+            margin: 1.2rem 0;
+        }
+
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            border: none;
+            font-size: 0.88rem;
+        }
+
+        .tip-box {
+            background-color: #f4f8f4;
+            border-left: 4px solid #2e7d32;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .tip-title {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: bold;
+            color: #2e7d32;
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 600px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-title {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: bold;
+            margin-bottom: 6px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Swift & SwiftUI: Zoro Developer Primer</h1>
+    <div class="subtitle">A quick-reference guide tailored specifically to code patterns inside the Zoro workspace.</div>
+
+    <p>This reference card breaks down the essential language features and UI components you will see throughout Zoro. Refer back to it whenever you encounter unfamiliar Swift syntax.</p>
+
+    <h2>1. Swift Language Essentials</h2>
+
+    <h3>Structs vs. Classes</h3>
+    <p>Swift uses both structs and classes, but they behave differently:</p>
+    <div class="grid">
+        <div class="card">
+            <div class="card-title">Structs (Value Types)</div>
+            <p style="font-size:0.9rem; margin:0;">Copied when passed around. Perfect for simple data models and immutable tools. 
+            <br><em>Examples:</em> <code>ChatMessage</code>, <code>TodoItem</code>, and all <code>Tool</code> implementations.</p>
+        </div>
+        <div class="card">
+            <div class="card-title">Classes (Reference Types)</div>
+            <p style="font-size:0.9rem; margin:0;">Shared in memory. Multiple variables point to the exact same instance.
+            <br><em>Examples:</em> <code>WorkspaceManager</code> (where shared state must update globally).</p>
+        </div>
+    </div>
+
+    <h3>Optionals (<code>?</code>)</h3>
+    <p>In Swift, variables cannot normally be empty or <code>nil</code>. If a value is allowed to be missing, it is marked with a question mark (<code>?</code>) and called an <strong>Optional</strong>.</p>
+    <pre><code class="language-swift">// Can be a URL folder path, or nil (nothing)
+var workspaceURL: URL? = nil</code></pre>
+    <p>To safely use optionals, we "unwrap" them using a <code>guard let</code> statement:</p>
+    <pre><code class="language-swift">guard let unwrappedURL = workspaceURL else {
+    return "Error: No workspace directory selected." // Exits early if nil
+}
+// Now 'unwrappedURL' is a regular, safe URL we can use below</code></pre>
+
+    <h3>Singletons (<code>shared</code>)</h3>
+    <p>A singleton ensures that only a single instance of a class ever exists. Zoro uses this to manage active workspace files, background processes, and user tasks from anywhere in the codebase.</p>
+    <pre><code class="language-swift">class WorkspaceManager {
+    static let shared = WorkspaceManager() // The single global instance
+    private init() {}                      // Prevents creating other copies
+}
+
+// Accessed anywhere in Zoro via:
+WorkspaceManager.shared.runCommand("ls")</code></pre>
+
+    <h2>2. SwiftUI & State Management</h2>
+    <p>SwiftUI is a <strong>declarative</strong> framework. Instead of writing code to manually add, move, or delete views, you describe how the view should look based on the current state. When state variables change, SwiftUI automatically redraws the affected views.</p>
+
+    <h3>Property Wrappers</h3>
+    <p>Property wrappers add special behavior to variables, usually starting with an <code>@</code> symbol:</p>
+    <ul>
+        <li><code>@Published</code>: Inside a class, this tells SwiftUI to monitor this variable. If it changes, any view watching this class will automatically redraw.</li>
+        <li><code>@StateObject</code>: Creates and manages a reference-type state class inside a view, keeping it alive during view redraws.</li>
+        <li><code>@State</code>: Manages simple, local state (like whether a settings window is open) within a single view.</li>
+    </ul>
+
+    <div class="tip-box">
+        <div class="tip-title">Zoro Code Pattern Connection</div>
+        <p style="font-size:0.95rem; margin:0; font-style:italic;">
+        In <code>ContentView.swift</code>, you will see:<br>
+        <code>@StateObject private var workspace = WorkspaceManager.shared</code><br>
+        Because `workspace` is a `@StateObject` and its properties like `workspaceURL` or `activeTodos` are marked `@Published` in `WorkspaceManager`, the chat UI instantly refreshes the folder path or task checklists whenever they change in the background!
+        </p>
+    </div>
+
+    <h2>3. Swift Concurrency (<code>async/await</code>)</h2>
+    <p>Zoro needs to perform long-running tasks—like executing terminal commands, fetching data from Tavily, or waiting for Apple Intelligence—without freezing the macOS app window. It uses Swift's modern concurrency model:</p>
+    <ul>
+        <li><code>async</code>: Marks a function that runs in the background and can pause itself if needed.</li>
+        <li><code>await</code>: Used when calling an async function. It indicates that the current execution will wait for the background task to complete before continuing.</li>
+        <li><code>@MainActor</code>: A decorator indicating that a class or method must run on the <strong>main thread</strong>, which is required for any operation modifying the UI.</li>
+    </ul>
+
+    <pre><code class="language-swift">// Runs in the background (async) and can throw errors
+func runCommand(_ command: String) async throws -> String {
+    // ... execution code ...
+    try process.run()
+    // ...
+}</code></pre>
+</body>
+</html>
