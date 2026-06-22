@@ -151,12 +151,6 @@ class WorkspaceManager: ObservableObject {
                 tools: tools,
                 instructions: instructions
             )
-        case .mock:
-            throw NSError(
-                domain: "ZoroError",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Mock mode handles requests without sessions."]
-            )
         }
         
         self.session = newSession
@@ -350,7 +344,6 @@ enum ModelType: String, CaseIterable, Identifiable {
     case pcc = "Private Cloud Compute"
     case claude = "Claude (Anthropic)"
     case gemini = "Gemini (Google)"
-    case mock = "Mock Model (Offline)"
     
     var id: String { self.rawValue }
 }

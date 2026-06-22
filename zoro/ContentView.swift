@@ -503,11 +503,6 @@ struct ContentView: View {
                         isModelReady = true
                     }
                 }
-            case .mock:
-                await MainActor.run {
-                    modelAvailabilityMessage = "Mock mode is ready (offline simulation)."
-                    isModelReady = true
-                }
             }
         }
     }
@@ -557,18 +552,7 @@ struct ContentView: View {
         let assistantMsgPlaceholder = ChatMessage(role: .assistant, content: "Thinking...")
         workspace.messages.append(assistantMsgPlaceholder)
         
-        if workspace.selectedModelType == .mock {
-            Task {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                await MainActor.run {
-                    if let lastIndex = workspace.messages.indices.last {
-                        workspace.messages[lastIndex].content = "Mock response: You sent: \"\(text)\". Zoro is in Mock Mode. Please select 'On-Device' or 'Claude (Anthropic)' in Settings to connect to an active AI model."
-                    }
-                    isRunning = false
-                }
-            }
-            return
-        }
+
         
         Task {
             if workspace.selectedModelType == .system {
@@ -576,7 +560,7 @@ struct ContentView: View {
                 if case .unavailable(let reason) = status {
                     await MainActor.run {
                         if let lastIndex = workspace.messages.indices.last {
-                            workspace.messages[lastIndex].content = "On-Device Apple Intelligence model is not ready yet.\n\nReason: \(reasonDescription(for: reason))\n\nTip: Click the gear icon in the header and switch the Active Backend to 'Mock Model (Offline)' to test Zoro's tools immediately."
+                            workspace.messages[lastIndex].content = "On-Device Apple Intelligence model is not ready yet.\n\nReason: \(reasonDescription(for: reason))\n\nTip: Click the gear icon in the header and configure 'Claude (Anthropic)' or 'Gemini (Google)' to test Zoro's tools immediately."
                         }
                         isRunning = false
                     }
@@ -587,7 +571,7 @@ struct ContentView: View {
                 if case .unavailable(let reason) = status {
                     await MainActor.run {
                         if let lastIndex = workspace.messages.indices.last {
-                            workspace.messages[lastIndex].content = "Private Cloud Compute is not available.\n\nReason: \(reason)\n\nTip: PCC requires the 'com.apple.developer.private-cloud-compute' entitlement. Click the gear icon and switch to 'Mock Model (Offline)' to test Zoro immediately."
+                            workspace.messages[lastIndex].content = "Private Cloud Compute is not available.\n\nReason: \(reason)\n\nTip: PCC requires the 'com.apple.developer.private-cloud-compute' entitlement. Click the gear icon and switch to 'Claude (Anthropic)' or 'Gemini (Google)' to use Zoro."
                         }
                         isRunning = false
                     }
@@ -631,7 +615,7 @@ struct ContentView: View {
                 } else {
                     await MainActor.run {
                         if let lastIndex = workspace.messages.indices.last {
-                            workspace.messages[lastIndex].content = "Error: \(error.localizedDescription)\n\nTip: If you do not have active developer entitlements or keys, you can click the gear icon and switch to 'Mock Model (Offline)' to test Zoro's files and commands."
+                            workspace.messages[lastIndex].content = "Error: \(error.localizedDescription)\n\nTip: If you do not have active developer entitlements, you can click the gear icon and configure 'Claude (Anthropic)' or 'Gemini (Google)' to use Zoro's tools."
                         }
                         isRunning = false
                     }
@@ -654,8 +638,6 @@ struct ContentView: View {
                 tempSession = LanguageModelSession(model: ClaudeLanguageModel(name: .sonnet4_6, auth: .apiKey(anthropicApiKey)))
             case .gemini:
                 tempSession = LanguageModelSession(model: GeminiLanguageModel(modelName: "gemini-2.5-flash", apiKey: geminiApiKey))
-            case .mock:
-                return "Mock summary of the conversation."
             }
             
             let prompt = "Please write a highly concise summary (under 100 words) of the conversation so far, focusing on what was accomplished and what context is needed to continue:\n\n\(chatText)"
