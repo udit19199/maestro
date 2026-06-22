@@ -8,6 +8,7 @@
 import Foundation
 import SQLite3
 import Combine
+import FoundationModels
 
 class IMessageListener {
     static let shared = IMessageListener()
@@ -62,7 +63,8 @@ class IMessageListener {
         }
         
         // Start a fallback timer as a safety net
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
             self.fallbackTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
                 self?.checkForNewMessages()
             }
