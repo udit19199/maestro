@@ -65,6 +65,7 @@ public struct GeminiExecutor: LanguageModelExecutor {
         self.configuration = configuration
     }
 
+    @MainActor
     public func respond(
         to request: LanguageModelExecutorGenerationRequest,
         model: GeminiLanguageModel,
