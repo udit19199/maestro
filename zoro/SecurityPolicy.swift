@@ -20,6 +20,12 @@ enum SecurityPolicy {
     static let iMessageRateLimitPerMinute = 5
     static let maxIMessageReplyCharacters = 4_000
 
+    static let gmailPageSize = 25
+    static let maxGmailMessagesPerOperation = 100
+    static let maxGmailBatchRead = 20
+    static let maxGmailBodyBytes = 1_048_576
+    static let gmailMaxRetries = 5
+
     private static let iMessageAllowedTools: Set<String> = [
         "list_directory",
         "read_file",

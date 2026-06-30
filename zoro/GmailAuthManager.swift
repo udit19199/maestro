@@ -64,6 +64,7 @@ final class GmailAuthManager: ObservableObject {
             let token = try await getValidAccessToken()
             connectedEmail = try await fetchProfileEmail(accessToken: token)
             isConnected = true
+            Task { await GmailManager.shared.refreshSnapshot() }
         } catch {
             isConnected = KeychainHelper.retrieve(key: "gmail_refresh_token") != nil
             connectedEmail = nil
@@ -112,6 +113,10 @@ final class GmailAuthManager: ObservableObject {
         let token = try await getValidAccessToken()
         connectedEmail = try await fetchProfileEmail(accessToken: token)
         isConnected = true
+        Task {
+            await GmailManager.shared.refreshSnapshot()
+            await MainActor.run { WorkspaceManager.shared.invalidateSessionsForConfigChange() }
+        }
     }
 
     func disconnect() {
@@ -120,6 +125,11 @@ final class GmailAuthManager: ObservableObject {
         KeychainHelper.delete(key: "gmail_token_expiry")
         isConnected = false
         connectedEmail = nil
+        Task { @MainActor in
+            GmailManager.shared.unreadCount = nil
+            GmailManager.shared.inboxPreview = []
+            WorkspaceManager.shared.invalidateSessionsForConfigChange()
+        }
     }
 
     func getValidAccessToken() async throws -> String {
