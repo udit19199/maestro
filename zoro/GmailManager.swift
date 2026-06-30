@@ -34,10 +34,14 @@ final class GmailManager: ObservableObject {
     @Published var isSyncing: Bool = false
     @Published var syncError: String?
 
+    private(set) var sessionReadMessageIds: Set<String> = []
+    private var autoRefreshTimer: Timer?
+
     private init() {}
 
     func refreshSnapshot() async {
         guard GmailAuthManager.shared.isConnected else {
+            stopAutoRefresh()
             unreadCount = nil
             inboxPreview = []
             lastSyncedAt = nil
@@ -65,9 +69,39 @@ final class GmailManager: ObservableObject {
                 )
             }
             lastSyncedAt = Date()
+            startAutoRefreshIfNeeded()
         } catch {
             syncError = error.localizedDescription
         }
+    }
+
+    func recordMessagesRead(_ ids: [String]) {
+        sessionReadMessageIds.formUnion(ids.filter { !$0.isEmpty })
+    }
+
+    func sessionReadFooter() -> String {
+        if sessionReadMessageIds.isEmpty {
+            return "session_messages_fully_read: none"
+        }
+        let listed = sessionReadMessageIds.sorted().joined(separator: ", ")
+        return "session_messages_fully_read: \(listed)"
+    }
+
+    func clearSessionReads() {
+        sessionReadMessageIds = []
+    }
+
+    func startAutoRefreshIfNeeded() {
+        stopAutoRefresh()
+        guard GmailAuthManager.shared.isConnected else { return }
+        autoRefreshTimer = Timer.scheduledTimer(withTimeInterval: SecurityPolicy.gmailAutoRefreshSeconds, repeats: true) { [weak self] _ in
+            Task { await self?.refreshSnapshot() }
+        }
+    }
+
+    func stopAutoRefresh() {
+        autoRefreshTimer?.invalidate()
+        autoRefreshTimer = nil
     }
 
     func logActivity(_ message: String, status: String = "in_progress") {
@@ -115,6 +149,8 @@ final class GmailManager: ObservableObject {
         6. When body_complete is false, state the truncation explicitly — do NOT fill in missing content.
         7. Cite message IDs when referencing specific emails.
         8. Call get_status when you need current unread counts or account confirmation.
+        9. Use read_attachment for text attachments (plain, HTML, JSON, CSV) when the body references an attachment.
+        10. Only cite message IDs listed in session_messages_fully_read when summarizing content — if an ID is not listed, call read_message first.
         === END GMAIL RULES ===
         """
     }

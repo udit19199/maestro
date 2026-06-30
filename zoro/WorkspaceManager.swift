@@ -83,6 +83,7 @@ class WorkspaceManager: ObservableObject {
         self.activeTodos = []
         self.clearResearchSteps()
         self.pruneTerminatedProcesses()
+        GmailManager.shared.clearSessionReads()
     }
 
     func resetIMessageSession() {

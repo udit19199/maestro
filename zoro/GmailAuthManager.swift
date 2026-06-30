@@ -8,6 +8,8 @@
 import Foundation
 import AppKit
 import Combine
+import CryptoKit
+import Security
 
 enum GmailAuthError: LocalizedError {
     case missingCredentials
@@ -83,6 +85,9 @@ final class GmailAuthManager: ObservableObject {
         defer { isAuthorizing = false }
 
         let state = UUID().uuidString
+        let codeVerifier = Self.generateCodeVerifier()
+        let codeChallenge = Self.codeChallenge(for: codeVerifier)
+
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         components.queryItems = [
             URLQueryItem(name: "client_id", value: clientId),
@@ -91,7 +96,9 @@ final class GmailAuthManager: ObservableObject {
             URLQueryItem(name: "scope", value: Self.scopes),
             URLQueryItem(name: "access_type", value: "offline"),
             URLQueryItem(name: "prompt", value: "consent"),
-            URLQueryItem(name: "state", value: state)
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256")
         ]
 
         guard let authURL = components.url else {
@@ -107,7 +114,8 @@ final class GmailAuthManager: ObservableObject {
         try await exchangeCodeForTokens(
             code: code,
             clientId: clientId,
-            clientSecret: clientSecret
+            clientSecret: clientSecret,
+            codeVerifier: codeVerifier
         )
 
         let token = try await getValidAccessToken()
@@ -128,6 +136,7 @@ final class GmailAuthManager: ObservableObject {
         Task { @MainActor in
             GmailManager.shared.unreadCount = nil
             GmailManager.shared.inboxPreview = []
+            GmailManager.shared.stopAutoRefresh()
             WorkspaceManager.shared.invalidateSessionsForConfigChange()
         }
     }
@@ -180,7 +189,7 @@ final class GmailAuthManager: ObservableObject {
         return tokenResponse.accessToken
     }
 
-    private func exchangeCodeForTokens(code: String, clientId: String, clientSecret: String) async throws {
+    private func exchangeCodeForTokens(code: String, clientId: String, clientSecret: String, codeVerifier: String) async throws {
         var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -190,7 +199,8 @@ final class GmailAuthManager: ObservableObject {
             "client_id": clientId,
             "client_secret": clientSecret,
             "redirect_uri": Self.redirectURI,
-            "grant_type": "authorization_code"
+            "grant_type": "authorization_code",
+            "code_verifier": codeVerifier
         ]
         request.httpBody = body
             .map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.value)" }
@@ -233,6 +243,24 @@ final class GmailAuthManager: ObservableObject {
 
         let profile = try JSONDecoder().decode(GmailProfileResponse.self, from: data)
         return profile.emailAddress
+    }
+
+    private static func generateCodeVerifier() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "="))
+    }
+
+    private static func codeChallenge(for verifier: String) -> String {
+        let hash = SHA256.hash(data: Data(verifier.utf8))
+        return Data(hash).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }
 

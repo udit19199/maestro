@@ -24,7 +24,21 @@ enum SecurityPolicy {
     static let maxGmailMessagesPerOperation = 100
     static let maxGmailBatchRead = 20
     static let maxGmailBodyBytes = 1_048_576
+    static let maxGmailAttachmentBytes = 524_288
     static let gmailMaxRetries = 5
+    static let gmailAutoRefreshSeconds: TimeInterval = 300
+
+    private static let gmailTextAttachmentMimePrefixes = [
+        "text/",
+        "application/json",
+        "application/xml",
+        "application/csv"
+    ]
+
+    static func isGmailTextAttachment(_ mimeType: String) -> Bool {
+        let lower = mimeType.lowercased()
+        return gmailTextAttachmentMimePrefixes.contains { lower.hasPrefix($0) || lower == $0 }
+    }
 
     private static let iMessageAllowedTools: Set<String> = [
         "list_directory",

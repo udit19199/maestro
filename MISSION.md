@@ -7,7 +7,8 @@ Enable the user to confidently maintain, extend, and debug the Zoro macOS applic
 - Explain the lifecycle of a user prompt, from submission in `ContentView` to stream completion.
 - Identify how `WorkspaceManager` acts as the single source of truth and manages background commands and tasks.
 - Create and register a new tool conforming to the `Tool` protocol.
-- Debug AppleScript, EventKit, or Keychain integrations within the existing codebase.
+- Debug AppleScript, EventKit, Keychain, or Gmail OAuth/API integrations within the existing codebase.
+- Connect Gmail, explain the index-vs-read fetch model, and extend `manage_gmail` safely.
 
 ## Constraints
 - Lessons should be short, modular, and highly practical.

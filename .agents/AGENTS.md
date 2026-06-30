@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, and Anthropic Claude (via `ClaudeForFoundationModels`). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — all scoped to a user-selected workspace directory.
+Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, Anthropic Claude (via `ClaudeForFoundationModels`), and Google Gemini. The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, interact with Apple Notes, and access Gmail — all scoped to a user-selected workspace directory (file/shell tools) or connected accounts (Gmail, Notes, Calendar).
 
 - **Platform**: macOS 27.0+
 - **Language**: Swift 5 (uses modern Swift concurrency: `async/await`, `Task`, `CheckedContinuation`)
@@ -19,8 +19,11 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 zoro/
 ├── zoroApp.swift            # @main App entry point
 ├── ContentView.swift        # Single-view architecture: chat UI, settings, session management
-├── WorkspaceManager.swift   # Singleton state manager (workspace, processes, todos, research)
-├── KeychainHelper.swift     # macOS Keychain wrapper for API key storage
+├── WorkspaceManager.swift   # Singleton state manager (workspace, processes, todos, research, sessions)
+├── KeychainHelper.swift     # macOS Keychain wrapper for API key / OAuth token storage
+├── GmailAuthManager.swift   # Gmail OAuth 2.0 desktop flow
+├── GmailService.swift       # Gmail REST API client (pagination, fetch reports)
+├── GmailManager.swift       # Gmail UI state + agent context injection
 ├── *Tool.swift              # Individual tool implementations conforming to `Tool` protocol
 ```
 
@@ -67,7 +70,7 @@ zoro/
 - Use `withCheckedContinuation` / `withCheckedThrowingContinuation` for bridging callback-based APIs (e.g., EventKit permissions, ClarifyTool suspension).
 
 ### Secrets Management
-- API keys (Anthropic, Tavily) are stored in the macOS Keychain via `KeychainHelper`, never hardcoded or stored in files.
+- API keys (Anthropic, Gemini, Tavily) and Gmail OAuth credentials/tokens are stored in the macOS Keychain via `KeychainHelper`, never hardcoded or stored in files.
 - Keys are loaded on `onAppear` and saved on `onChange` of the corresponding text fields.
 
 ---
@@ -101,8 +104,8 @@ When adding a new tool to Zoro, follow these steps:
        }
    }
    ```
-3. **Register the tool** in `ContentView.swift` inside `getOrCreateSession()` by adding it to the `tools` array.
-4. **Document the tool** in the system `instructions` string inside `getOrCreateSession()` so the LLM knows it's available.
+3. **Register the tool** in `WorkspaceManager.swift` inside both `localTools` and (if appropriate) `iMessageTools` arrays.
+4. **Document the tool** in the `localInstructions` / `iMessageInstructions` strings in `WorkspaceManager.swift` so the LLM knows it's available.
 
 ---
 
@@ -118,7 +121,7 @@ When adding a new tool to Zoro, follow these steps:
 | `EventKit` | Calendar events and reminders |
 | `Combine` | `@Published` / `ObservableObject` reactivity |
 
-There are **no third-party package dependencies** (no SPM `Package.swift`). All external integrations (Tavily, Apple Notes) are done via direct HTTP requests or AppleScript.
+There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, Apple Notes, and iMessage integrations use direct HTTP (`URLSession`) or AppleScript — no Google SDK.
 
 ---
 
@@ -176,4 +179,58 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 ### Code Constraints
 - **Zero-Dependency Policy:** Do not install or require external communication CLIs (like `imsg`), Node, or Python bridges. All parsing (including binary plist/attributedBody decoding) must be done natively in Swift.
 - **Read-Only Database Connections:** Always use `SQLITE_OPEN_READONLY` when opening `chat.db` to prevent locks and guarantee database integrity.
+
+---
+
+## Gmail Integration (First-Class)
+
+### Overview
+Gmail is a first-class integration — not a secondary tool. The user relies on it heavily. Design goals: complete fetches, explicit completeness flags, and anti-hallucination guardrails.
+
+| File | Purpose |
+|---|---|
+| `GmailAuthManager.swift` | OAuth 2.0 desktop flow; tokens in Keychain |
+| `GmailService.swift` | REST client; pagination; `GmailFetchReport` on every response |
+| `GmailManager.swift` | Inbox preview, unread count, activity log, `contextualInstructions()` |
+| `GmailTool.swift` | LLM-facing `manage_gmail` tool |
+
+Setup guide: `reference/gmail-setup.md`
+
+### Tool actions (`manage_gmail`)
+- `get_status` — account email, unread inbox, totals
+- `list_messages` / `search_messages` — **index only** (metadata + snippets); `fetchAll` defaults true
+- `read_message` / `read_messages` / `read_thread` — **full bodies** with `body_complete` flag
+- `send_email` / `trash_message` — write actions (blocked in iMessage remote sessions)
+
+### Anti-hallucination design
+1. Every tool response includes a `=== GMAIL FETCH REPORT ===` block with `fetch_complete`, `items_fetched`, and warnings.
+2. Search/list results are explicitly marked INDEX ONLY — agent must call read_* before summarizing.
+3. When Gmail is connected, `WorkspaceManager.makeSession()` appends `GmailManager.contextualInstructions()` to system instructions.
+4. Connect/disconnect calls `WorkspaceManager.invalidateSessionsForConfigChange()` so new sessions pick up Gmail rules.
+
+### Security & limits (`SecurityPolicy.swift`)
+- `gmailPageSize` = 25, `maxGmailMessagesPerOperation` = 100, `maxGmailBatchRead` = 20
+- `maxGmailBodyBytes` = 1 MB, `gmailMaxRetries` = 5 (429/5xx backoff)
+- iMessage remote: read/search allowed; send/trash denied via `isGmailActionPermitted()`
+
+### UI (`ContentView.swift`)
+- Header badge when connected (email, unread, sync, refresh)
+- Inbox preview panel (latest 5 messages)
+- Gmail activity log during agent runs
+
+### OAuth redirect URI
+`http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
+
+### Known gaps (not yet implemented)
+- PDF/image attachment parsing — use `read_attachment` for text types only today
+- Hard enforcement blocking LLM replies that cite unread message IDs (instruction + session tracking today)
+- Background push via Gmail Pub/Sub (requires public HTTPS endpoint)
+- Automated tests
+
+### Recently added
+- **PKCE** (S256) on OAuth authorization flow
+- **Session read tracking** — `session_messages_fully_read` appended to every tool response
+- **read_attachment** — text/plain, HTML, JSON, CSV, XML attachments
+- **mark_read** — remove UNREAD label
+- **Auto-refresh** — inbox snapshot every 5 minutes when connected
 

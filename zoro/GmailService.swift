@@ -334,6 +334,72 @@ struct GmailService {
         return "Successfully moved message \(id) to trash."
     }
 
+    func markMessageAsRead(id: String) async throws -> String {
+        var request = URLRequest(url: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(id)/modify")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["removeLabelIds": ["UNREAD"]])
+
+        let (data, response) = try await performRequest(request)
+        guard response.statusCode == 200 else {
+            throw GmailAuthError.networkError("Mark read failed: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
+        }
+        return "Successfully marked message \(id) as read."
+    }
+
+    func readAttachment(messageId: String, attachmentId: String) async throws -> GmailFetchReport {
+        let content = try await fetchMessageContent(id: messageId)
+        guard let attachment = content.attachments.first(where: { $0.attachmentId == attachmentId }) else {
+            throw GmailAuthError.networkError("Attachment \(attachmentId) not found on message \(messageId).")
+        }
+
+        guard SecurityPolicy.isGmailTextAttachment(attachment.mimeType) else {
+            throw GmailAuthError.networkError("Attachment '\(attachment.filename)' (\(attachment.mimeType)) is not a supported text type. Supported: plain text, HTML, JSON, CSV, XML.")
+        }
+
+        if attachment.size > SecurityPolicy.maxGmailAttachmentBytes {
+            throw GmailAuthError.networkError("Attachment exceeds \(SecurityPolicy.maxGmailAttachmentBytes) byte limit.")
+        }
+
+        let url = URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(messageId)/attachments/\(attachmentId)")!
+        let attachmentBody = try await decode(GmailAttachmentBody.self, from: url)
+        guard let encoded = attachmentBody.data, let raw = decodeBase64URL(encoded) else {
+            throw GmailAuthError.networkError("Could not decode attachment data.")
+        }
+
+        let text = attachment.mimeType.lowercased().contains("html") ? stripHTML(raw) : raw
+        let truncated = SecurityPolicy.truncateOutput(
+            text,
+            maxBytes: SecurityPolicy.maxGmailAttachmentBytes,
+            suffix: "\n\n[ATTACHMENT TRUNCATED — DO NOT INFER MISSING CONTENT]"
+        )
+
+        let body = """
+        message_id: \(messageId)
+        attachment_id: \(attachmentId)
+        filename: \(attachment.filename)
+        mime_type: \(attachment.mimeType)
+        size_bytes: \(attachment.size)
+        body_complete: \(text.utf8.count <= SecurityPolicy.maxGmailAttachmentBytes)
+
+        --- ATTACHMENT CONTENT ---
+        \(truncated.isEmpty ? "(Empty attachment)" : truncated)
+        """
+
+        return GmailFetchReport(
+            action: "read_attachment",
+            query: nil,
+            labelIds: nil,
+            resultSizeEstimate: 1,
+            itemsFetched: 1,
+            fetchComplete: true,
+            nextPageToken: nil,
+            warnings: ["Attachment content fetched — safe to summarize this text."],
+            body: body
+        )
+    }
+
     // MARK: - Internals
 
     private struct MessageRefPage {
@@ -492,7 +558,7 @@ struct GmailService {
         ]
         if !content.attachments.isEmpty {
             lines.append("")
-            lines.append("--- ATTACHMENTS (metadata only) ---")
+            lines.append("--- ATTACHMENTS (use read_attachment for text files) ---")
             for attachment in content.attachments {
                 lines.append("- \(attachment.filename) (\(attachment.mimeType), \(attachment.size) bytes)\(attachment.attachmentId.map { ", id=\($0)" } ?? "")")
             }
@@ -711,4 +777,9 @@ private struct GmailMessageBody: Decodable {
 
 private struct GmailSendResponse: Decodable {
     let id: String
+}
+
+private struct GmailAttachmentBody: Decodable {
+    let data: String?
+    let size: Int?
 }

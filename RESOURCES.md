@@ -14,6 +14,14 @@
   Use for: Extending or debugging the native Apple Notes scripting (`osascript`) calls.
 - [Swift Concurrency (async/await)](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/)
   Official Swift guide. Use for: Understanding tasks, check continuations, `@MainActor`, and asynchronous streams.
+- [Gmail API Overview](https://developers.google.com/gmail/api/guides)
+  Official Gmail REST API docs. Use for: messages.list, messages.get, threads.get, OAuth scopes, pagination.
+- [Google OAuth 2.0 for Desktop Apps](https://developers.google.com/identity/protocols/oauth2/native-app)
+  Use for: Setting up Desktop OAuth credentials and redirect URI (`http://127.0.0.1:8765/` for Zoro).
+- [Gmail API Push Notifications](https://developers.google.com/gmail/api/guides/push)
+  Optional reading. Use for: Understanding why Zoro uses on-demand fetch instead of webhooks (no public server).
+- [Zoro Gmail Setup Guide](../reference/gmail-setup.md)
+  Project-specific: Google Cloud setup, Connect Gmail flow, troubleshooting, architecture map.
 
 ## Wisdom (Communities)
 
