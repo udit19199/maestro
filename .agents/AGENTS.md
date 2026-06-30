@@ -124,10 +124,10 @@ There are **no third-party package dependencies** (no SPM `Package.swift`). All 
 
 ## Things to Watch Out For
 
-- **Workspace Scoping**: All file operations (read, write, list, search, patch) resolve paths *relative* to `WorkspaceManager.shared.workspaceURL`. Never use absolute paths in tool implementations.
+- **Workspace Scoping**: All file operations (read, write, list, search, patch) resolve paths via `SecurityPolicy.resolveWorkspacePath()` relative to `WorkspaceManager.shared.workspaceURL`. Absolute paths and workspace escapes are rejected.
 - **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
-- **AppleScript**: `AppleNotesTool` uses `/usr/bin/osascript` to drive Apple Notes. All user input injected into AppleScript strings must be escaped via `escapeForAppleScript()`.
+- **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
 - **No Tests Yet**: There is currently no test target or test suite. When adding tests, create a standard Xcode test target.
 
 ---
@@ -160,9 +160,18 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 
 ### Security Controls
 1. **Full Disk Access:** Accessing `chat.db` requires Full Disk Access enabled in macOS System Settings for the parent target (Xcode/Zoro). If not granted, the app surfaces a clear diagnostic warning.
-2. **Strict Sender Whitelist:** Incoming messages are compared against a comma-separated list of whitelisted phone numbers/emails stored in `UserDefaults`. Unlisted senders are silently ignored.
-3. **Passcode Verification:** If a passcode is stored in the Keychain, it must be prefixed to any command (e.g., `Zoro: [Passcode] [Command]`). Incorrect passcodes block execution.
-4. **Rate Limiting:** Remote execution is capped at a maximum of 5 commands per minute. This protects against recursive loops (infinite messaging echoes) and runaway LLM billing.
+2. **Strict Sender Whitelist:** Incoming messages are compared against a comma-separated list of whitelisted phone numbers/emails stored in `UserDefaults`. Unlisted senders are silently ignored. Contacts are normalized before comparison.
+3. **Required Passcode:** Remote iMessage commands require a passcode stored in the Keychain. The listener cannot be enabled without both a passcode and at least one whitelisted sender.
+4. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
+5. **Per-Sender Rate Limiting:** Remote execution is capped at 5 commands per minute per sender.
+6. **Restricted Remote Tool Set:** iMessage sessions use a separate LLM session with a reduced tool set. Shell commands, file writes, patches, process inspection, and clarifying questions are blocked remotely.
+7. **Workspace Path Validation:** All file tools resolve paths with `SecurityPolicy.resolveWorkspacePath()` and reject absolute paths or traversal outside the workspace root.
+8. **Attachment Scoping:** iMessage attachments are only read from `~/Library/Messages/Attachments`.
+9. **Outbound iMessage Restrictions:** Remote sessions may only reply to the requester who sent the command.
+10. **AppleScript + HTML Escaping:** User/LLM content injected into AppleScript or Notes HTML passes through `SecurityPolicy.escapeForAppleScript()` / `SecurityPolicy.escapeHTML()`.
+11. **Resource Limits:** File reads, shell output, shell timeouts, and iMessage reply length are capped in `SecurityPolicy.swift`.
+12. **Keychain Hardening:** Secrets use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+13. **Gemini API Key Transport:** Gemini requests send the API key via the `x-goog-api-key` header, not the URL query string.
 
 ### Code Constraints
 - **Zero-Dependency Policy:** Do not install or require external communication CLIs (like `imsg`), Node, or Python bridges. All parsing (including binary plist/attributedBody decoding) must be done natively in Swift.

@@ -74,8 +74,8 @@ public struct GeminiExecutor: LanguageModelExecutor {
         let responseEntryID = UUID().uuidString
         let toolCallsEntryID = UUID().uuidString
         
-        // 1. Build the REST URL
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(configuration.modelName):streamGenerateContent?alt=sse&key=\(configuration.apiKey)"
+        // 1. Build the REST URL (API key is sent via header, not query string)
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(configuration.modelName):streamGenerateContent?alt=sse"
         guard let url = URL(string: urlString) else {
             throw NSError(domain: "GeminiExecutor", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid Gemini API endpoint URL"])
         }
@@ -162,6 +162,7 @@ public struct GeminiExecutor: LanguageModelExecutor {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue(configuration.apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.timeoutInterval = configuration.timeout
         
         let encoder = JSONEncoder()

@@ -11,16 +11,22 @@ import FoundationModels
 struct ProcessStatusTool: Tool {
     let name = "get_process_status"
     let description = "Check the status, running state, and output logs of active background processes."
-    
+
     @Generable
     struct Arguments {
         @Guide(description: "The Task ID of the background process, or empty string to list all active processes.")
         var taskId: String
     }
-    
+
     func call(arguments: Arguments) async throws -> String {
-        let activeProcesses = await WorkspaceManager.shared.activeProcesses
-        
+        let workspace = await WorkspaceManager.shared
+        if let permissionError = await workspace.toolPermissionError(for: name) {
+            return permissionError
+        }
+
+        await workspace.pruneTerminatedProcesses()
+        let activeProcesses = await workspace.activeProcesses
+
         if arguments.taskId.isEmpty {
             if activeProcesses.isEmpty {
                 return "No background processes currently active."
@@ -32,14 +38,14 @@ struct ProcessStatusTool: Tool {
             }
             return lines.joined(separator: "\n")
         }
-        
+
         guard let proc = activeProcesses[arguments.taskId] else {
             return "Error: No background process found with Task ID '\(arguments.taskId)'."
         }
-        
+
         let status = (await proc.isRunning) ? "RUNNING" : "TERMINATED"
         let output = await proc.getAvailableOutput()
-        
+
         var response = "Task ID: \(arguments.taskId)\nStatus: \(status)\nCommand: \(proc.command)\n"
         if !output.isEmpty {
             response += "\nNew Output Logs:\n\(output)"
