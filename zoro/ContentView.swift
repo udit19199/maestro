@@ -801,6 +801,7 @@ struct ContentView: View {
         prompt = ""
         workspace.clearResearchSteps()
         gmailManager.clearActivity()
+        GmailReadAuditor.resetPromptState()
         
         // Handle reply to active clarification
         if let continuation = workspace.clarifyContinuation {
@@ -871,6 +872,13 @@ struct ContentView: View {
                 
                 await MainActor.run {
                     workspace.conversationSummary = nil
+                    if let lastIndex = workspace.messages.indices.last {
+                        let audited = GmailReadAuditor.auditAssistantResponse(
+                            workspace.messages[lastIndex].content,
+                            userPrompt: text
+                        )
+                        workspace.messages[lastIndex].content = audited
+                    }
                     isRunning = false
                 }
             } catch {

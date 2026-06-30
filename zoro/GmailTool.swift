@@ -13,54 +13,63 @@ struct GmailTool: Tool {
     let description = """
     First-class Gmail integration. Always returns a structured GMAIL FETCH REPORT with fetch_complete flags.
     Use get_status for account/unread info. Use search/list for indexes, then read_message/read_messages/read_thread for full bodies.
-    Use read_attachment for text attachments. Never summarize email from snippets alone.
+    Use read_attachment for text/PDF attachments. Never summarize email from snippets alone.
     """
 
     @Generable
     struct Arguments {
-        @Guide(description: "Action: 'get_status', 'list_messages', 'search_messages', 'read_message', 'read_messages', 'read_thread', 'read_attachment', 'mark_read', 'send_email', 'trash_message'")
+        @Guide(description: "Action: get_status, list_messages, search_messages, read_message, read_messages, read_thread, read_attachment, mark_read, archive_message, star_message, unstar_message, modify_labels, list_labels, create_draft, reply_to_thread, send_email, trash_message")
         var action: String
 
-        @Guide(description: "Gmail message ID (read_message, trash_message, mark_read, read_attachment)")
+        @Guide(description: "Gmail message ID")
         var messageId: String?
 
-        @Guide(description: "Gmail attachment ID from read_message output (read_attachment)")
+        @Guide(description: "Gmail attachment ID from read_message output")
         var attachmentId: String?
 
-        @Guide(description: "Gmail thread ID (read_thread)")
+        @Guide(description: "Gmail thread ID")
         var threadId: String?
 
-        @Guide(description: "Multiple message IDs to read in one call (read_messages)")
+        @Guide(description: "Message ID being replied to (reply_to_thread)")
+        var inReplyToMessageId: String?
+
+        @Guide(description: "Multiple message IDs (read_messages)")
         var messageIds: [String]?
 
-        @Guide(description: "Gmail search query (search_messages), e.g. 'from:alice is:unread newer_than:7d'")
+        @Guide(description: "Gmail search query")
         var query: String?
 
-        @Guide(description: "Label IDs for list_messages, e.g. ['INBOX']. Defaults to INBOX.")
+        @Guide(description: "Label IDs for list_messages, e.g. ['INBOX']")
         var labelIds: [String]?
+
+        @Guide(description: "Label IDs to add (modify_labels)")
+        var addLabelIds: [String]?
+
+        @Guide(description: "Label IDs to remove (modify_labels)")
+        var removeLabelIds: [String]?
 
         @Guide(description: "Max results per page. Defaults to 25.")
         var maxResults: Int?
 
-        @Guide(description: "When true, paginate until all matches are fetched (up to app limit) or no next page. Defaults to true for thoroughness.")
+        @Guide(description: "Paginate until cap or no next page. Defaults to true.")
         var fetchAll: Bool?
 
-        @Guide(description: "Page token from a previous fetch report when fetch_complete was false.")
+        @Guide(description: "Page token when fetch_complete was false")
         var pageToken: String?
 
-        @Guide(description: "Recipient email (send_email)")
+        @Guide(description: "Recipient email")
         var to: String?
 
-        @Guide(description: "Email subject (send_email)")
+        @Guide(description: "Email subject")
         var subject: String?
 
-        @Guide(description: "Plain-text email body (send_email)")
+        @Guide(description: "Plain-text email body")
         var body: String?
 
-        @Guide(description: "Optional CC, comma-separated (send_email)")
+        @Guide(description: "Optional CC, comma-separated")
         var cc: String?
 
-        @Guide(description: "Optional BCC, comma-separated (send_email)")
+        @Guide(description: "Optional BCC, comma-separated")
         var bcc: String?
     }
 
@@ -90,13 +99,12 @@ struct GmailTool: Tool {
         do {
             let result: String
             var readIds: [String] = []
+            var isIndexOnly = false
 
             switch arguments.action {
             case "get_status":
                 let status = try await service.fetchStatus()
-                await MainActor.run {
-                    GmailManager.shared.unreadCount = status.unreadInbox
-                }
+                await MainActor.run { GmailManager.shared.unreadCount = status.unreadInbox }
                 result = """
                 === GMAIL FETCH REPORT ===
                 action: get_status
@@ -112,26 +120,26 @@ struct GmailTool: Tool {
 
             case "list_messages":
                 let labels = arguments.labelIds ?? ["INBOX"]
-                let fetchAll = arguments.fetchAll ?? true
                 result = try await service.listMessages(
                     labelIds: labels,
                     maxResults: arguments.maxResults,
-                    fetchAll: fetchAll,
+                    fetchAll: arguments.fetchAll ?? true,
                     pageToken: arguments.pageToken
                 ).formatted()
+                isIndexOnly = true
 
             case "search_messages":
                 guard let query = arguments.query?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty else {
                     await gmail.failActivity(matching: activityLabel)
                     return "Error: Missing required 'query' for 'search_messages'."
                 }
-                let fetchAll = arguments.fetchAll ?? true
                 result = try await service.searchMessages(
                     query: query,
                     maxResults: arguments.maxResults,
-                    fetchAll: fetchAll,
+                    fetchAll: arguments.fetchAll ?? true,
                     pageToken: arguments.pageToken
                 ).formatted()
+                isIndexOnly = true
 
             case "read_message":
                 guard let messageId = arguments.messageId, !messageId.isEmpty else {
@@ -155,9 +163,8 @@ struct GmailTool: Tool {
                     await gmail.failActivity(matching: activityLabel)
                     return "Error: Missing required 'threadId' for 'read_thread'."
                 }
-                let report = try await service.readThread(threadId: threadId)
-                result = report.formatted()
-                readIds = extractMessageIds(from: result)
+                result = try await service.readThread(threadId: threadId).formatted()
+                readIds = GmailParsing.extractMessageIds(from: result)
 
             case "read_attachment":
                 guard let messageId = arguments.messageId, !messageId.isEmpty,
@@ -174,6 +181,74 @@ struct GmailTool: Tool {
                     return "Error: Missing required 'messageId' for 'mark_read'."
                 }
                 result = try await service.markMessageAsRead(id: messageId)
+
+            case "archive_message":
+                guard let messageId = arguments.messageId, !messageId.isEmpty else {
+                    await gmail.failActivity(matching: activityLabel)
+                    return "Error: Missing required 'messageId' for 'archive_message'."
+                }
+                result = try await service.archiveMessage(id: messageId)
+
+            case "star_message":
+                guard let messageId = arguments.messageId, !messageId.isEmpty else {
+                    await gmail.failActivity(matching: activityLabel)
+                    return "Error: Missing required 'messageId' for 'star_message'."
+                }
+                result = try await service.starMessage(id: messageId)
+
+            case "unstar_message":
+                guard let messageId = arguments.messageId, !messageId.isEmpty else {
+                    await gmail.failActivity(matching: activityLabel)
+                    return "Error: Missing required 'messageId' for 'unstar_message'."
+                }
+                result = try await service.unstarMessage(id: messageId)
+
+            case "modify_labels":
+                guard let messageId = arguments.messageId, !messageId.isEmpty else {
+                    await gmail.failActivity(matching: activityLabel)
+                    return "Error: Missing required 'messageId' for 'modify_labels'."
+                }
+                result = try await service.modifyMessageLabels(
+                    id: messageId,
+                    add: arguments.addLabelIds ?? [],
+                    remove: arguments.removeLabelIds ?? []
+                )
+
+            case "list_labels":
+                result = try await service.listLabels()
+
+            case "create_draft":
+                guard let to = arguments.to, !to.isEmpty,
+                      let subject = arguments.subject,
+                      let body = arguments.body else {
+                    await gmail.failActivity(matching: activityLabel)
+                    return "Error: Missing required fields ('to', 'subject', 'body') for 'create_draft'."
+                }
+                result = try await service.createDraft(
+                    to: to,
+                    subject: subject,
+                    body: body,
+                    cc: arguments.cc,
+                    bcc: arguments.bcc,
+                    threadId: arguments.threadId
+                )
+
+            case "reply_to_thread":
+                guard let threadId = arguments.threadId, !threadId.isEmpty,
+                      let inReplyTo = arguments.inReplyToMessageId, !inReplyTo.isEmpty,
+                      let to = arguments.to, !to.isEmpty,
+                      let subject = arguments.subject,
+                      let body = arguments.body else {
+                    await gmail.failActivity(matching: activityLabel)
+                    return "Error: Missing required fields for 'reply_to_thread' (threadId, inReplyToMessageId, to, subject, body)."
+                }
+                result = try await service.replyToThread(
+                    threadId: threadId,
+                    inReplyToMessageId: inReplyTo,
+                    to: to,
+                    subject: subject,
+                    body: body
+                )
 
             case "send_email":
                 guard let to = arguments.to, !to.isEmpty,
@@ -198,29 +273,24 @@ struct GmailTool: Tool {
 
             await gmail.completeActivity(matching: activityLabel)
             Task { await gmail.refreshSnapshot() }
-            return await finalize(result, readIds: readIds)
+            return await finalize(result, readIds: readIds, isIndexOnly: isIndexOnly)
         } catch {
             await gmail.failActivity(matching: activityLabel)
             return "Error: \(error.localizedDescription)"
         }
     }
 
-    private func finalize(_ result: String, readIds: [String]) async -> String {
-        if !readIds.isEmpty {
-            await MainActor.run {
+    private func finalize(_ result: String, readIds: [String], isIndexOnly: Bool) async -> String {
+        await MainActor.run {
+            if isIndexOnly {
+                GmailReadAuditor.recordIndexFetch(output: result)
+            }
+            if !readIds.isEmpty {
                 GmailManager.shared.recordMessagesRead(readIds)
+                GmailReadAuditor.recordFullRead()
             }
         }
         let footer = await GmailManager.shared.sessionReadFooter()
         return result + "\n\n" + footer
-    }
-
-    private func extractMessageIds(from report: String) -> [String] {
-        let pattern = /id=([a-zA-Z0-9]+)/
-        var ids = Set<String>()
-        for match in report.matches(of: pattern) {
-            ids.insert(String(match.1))
-        }
-        return Array(ids)
     }
 }

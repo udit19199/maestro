@@ -318,6 +318,9 @@ class IMessageListener {
     }
 
     private func runZoroAgent(sender: String, prompt: String) async {
+        await MainActor.run {
+            GmailReadAuditor.resetPromptState()
+        }
         do {
             let workspace = await WorkspaceManager.shared
             let activeSession = try workspace.getOrCreateSession(context: .iMessage(requester: sender))
@@ -329,7 +332,10 @@ class IMessageListener {
             }
 
             if !finalReply.isEmpty {
-                let truncatedReply = truncateReply(finalReply)
+                let audited = await MainActor.run {
+                    GmailReadAuditor.auditAssistantResponse(finalReply, userPrompt: prompt)
+                }
+                let truncatedReply = truncateReply(audited)
                 sendReply(to: sender, text: truncatedReply)
             } else {
                 await MainActor.run {

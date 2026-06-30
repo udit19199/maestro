@@ -71,12 +71,16 @@ Remote `zoro:` commands can **read/search** Gmail but cannot **send** or **trash
 | Redirect URI mismatch | Ensure Google Console has exactly `http://127.0.0.1:8765/` |
 | "Access blocked" on consent screen | Add your Google account as a test user (Testing mode) |
 | Token refresh fails | Disconnect and reconnect Gmail; re-authorize with `prompt=consent` |
-| Agent summarizes from snippets | Session may predate Gmail connect — send a new message to start a fresh session |
+| Agent summarizes from snippets | Response should be blocked by GmailReadAuditor — retry; ensure read_* was called |
+
+## Hard read enforcement
+
+If Zoro tries to summarize email without calling `read_message`, `read_messages`, or `read_thread` first, the assistant response is **blocked** and replaced with a verification error listing the issue.
 
 ## Known limits
 
-- **100 messages** max per search/list when `fetchAll: true` (configurable in `SecurityPolicy`)
+- **250 messages** max per search/list when `fetchAll: true` (configurable in `SecurityPolicy`)
 - **20 messages** max per `read_messages` batch
-- **Text attachments only** via `read_attachment` (plain, HTML, JSON, CSV, XML) — PDFs/images not yet supported
+- **Text + PDF attachments** via `read_attachment` — images not yet supported
 - **Inbox auto-refresh** every 5 minutes when connected (manual refresh also available)
 - **No background push** — uses on-demand fetch + periodic snapshot refresh

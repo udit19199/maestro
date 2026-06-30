@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PDFKit
 
 struct GmailFetchReport {
     let action: String
@@ -29,6 +30,9 @@ struct GmailFetchReport {
         lines.append("items_fetched: \(itemsFetched)")
         lines.append("fetch_complete: \(fetchComplete)")
         lines.append("next_page_token: \(nextPageToken ?? "none")")
+        if !fetchComplete, let token = nextPageToken {
+            lines.append("paginate_hint: Re-call with pageToken \"\(token)\" or fetchAll: true (cap: \(SecurityPolicy.maxGmailMessagesPerOperation) messages)")
+        }
         if !warnings.isEmpty {
             lines.append("warnings:")
             for warning in warnings {
@@ -303,7 +307,7 @@ struct GmailService {
 
     func sendEmail(to: String, subject: String, body: String, cc: String?, bcc: String?) async throws -> String {
         let rawMessage = buildRawEmail(to: to, subject: subject, body: body, cc: cc, bcc: bcc)
-        let encoded = base64URLEncode(Data(rawMessage.utf8))
+        let encoded = GmailParsing.base64URLEncode(Data(rawMessage.utf8))
 
         var request = URLRequest(url: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send")!)
         request.httpMethod = "POST"
@@ -354,21 +358,28 @@ struct GmailService {
             throw GmailAuthError.networkError("Attachment \(attachmentId) not found on message \(messageId).")
         }
 
-        guard SecurityPolicy.isGmailTextAttachment(attachment.mimeType) else {
-            throw GmailAuthError.networkError("Attachment '\(attachment.filename)' (\(attachment.mimeType)) is not a supported text type. Supported: plain text, HTML, JSON, CSV, XML.")
+        guard SecurityPolicy.isGmailReadableAttachment(attachment.mimeType) else {
+            throw GmailAuthError.networkError("Attachment '\(attachment.filename)' (\(attachment.mimeType)) is not a supported readable type. Supported: plain text, HTML, JSON, CSV, XML, PDF.")
         }
 
         if attachment.size > SecurityPolicy.maxGmailAttachmentBytes {
             throw GmailAuthError.networkError("Attachment exceeds \(SecurityPolicy.maxGmailAttachmentBytes) byte limit.")
         }
 
-        let url = URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(messageId)/attachments/\(attachmentId)")!
-        let attachmentBody = try await decode(GmailAttachmentBody.self, from: url)
-        guard let encoded = attachmentBody.data, let raw = decodeBase64URL(encoded) else {
-            throw GmailAuthError.networkError("Could not decode attachment data.")
+        let attachmentData = try await fetchAttachmentData(messageId: messageId, attachmentId: attachmentId)
+        let text: String
+        let source: String
+        if attachment.mimeType.lowercased() == "application/pdf" {
+            text = extractPDFText(from: attachmentData)
+            source = "application/pdf (PDFKit extraction)"
+        } else if attachment.mimeType.lowercased().contains("html"),
+                  let raw = String(data: attachmentData, encoding: .utf8) {
+            text = GmailParsing.stripHTML(raw)
+            source = attachment.mimeType
+        } else {
+            text = String(data: attachmentData, encoding: .utf8) ?? ""
+            source = attachment.mimeType
         }
-
-        let text = attachment.mimeType.lowercased().contains("html") ? stripHTML(raw) : raw
         let truncated = SecurityPolicy.truncateOutput(
             text,
             maxBytes: SecurityPolicy.maxGmailAttachmentBytes,
@@ -381,6 +392,7 @@ struct GmailService {
         filename: \(attachment.filename)
         mime_type: \(attachment.mimeType)
         size_bytes: \(attachment.size)
+        extraction_source: \(source)
         body_complete: \(text.utf8.count <= SecurityPolicy.maxGmailAttachmentBytes)
 
         --- ATTACHMENT CONTENT ---
@@ -398,6 +410,112 @@ struct GmailService {
             warnings: ["Attachment content fetched — safe to summarize this text."],
             body: body
         )
+    }
+
+    func archiveMessage(id: String) async throws -> String {
+        try await modifyMessageLabels(id: id, add: [], remove: ["INBOX"])
+        return "Successfully archived message \(id) (removed from INBOX)."
+    }
+
+    func starMessage(id: String) async throws -> String {
+        try await modifyMessageLabels(id: id, add: ["STARRED"], remove: [])
+        return "Successfully starred message \(id)."
+    }
+
+    func unstarMessage(id: String) async throws -> String {
+        try await modifyMessageLabels(id: id, add: [], remove: ["STARRED"])
+        return "Successfully removed star from message \(id)."
+    }
+
+    func modifyMessageLabels(id: String, add: [String], remove: [String]) async throws -> String {
+        var payload: [String: Any] = [:]
+        if !add.isEmpty { payload["addLabelIds"] = add }
+        if !remove.isEmpty { payload["removeLabelIds"] = remove }
+        guard !payload.isEmpty else {
+            throw GmailAuthError.networkError("No label changes specified.")
+        }
+
+        var request = URLRequest(url: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(id)/modify")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await performRequest(request)
+        guard response.statusCode == 200 else {
+            throw GmailAuthError.networkError("Label modify failed: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
+        }
+        return "Successfully updated labels on message \(id). Added: [\(add.joined(separator: ", "))]. Removed: [\(remove.joined(separator: ", "))]."
+    }
+
+    func listLabels() async throws -> String {
+        let labels = try await decode(GmailLabelList.self, from: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/labels")!)
+        guard let items = labels.labels, !items.isEmpty else {
+            return "No labels found."
+        }
+        var lines = ["Gmail labels:"]
+        for label in items {
+            lines.append("- \(label.name) (id: \(label.id), type: \(label.type ?? "unknown"))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    func createDraft(to: String, subject: String, body: String, cc: String?, bcc: String?, threadId: String?) async throws -> String {
+        let rawMessage = buildRawEmail(to: to, subject: subject, body: body, cc: cc, bcc: bcc)
+        let encoded = GmailParsing.base64URLEncode(Data(rawMessage.utf8))
+        var messagePayload: [String: Any] = ["raw": encoded]
+        if let threadId { messagePayload["threadId"] = threadId }
+
+        var request = URLRequest(url: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/drafts")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["message": messagePayload])
+
+        let (data, response) = try await performRequest(request)
+        guard response.statusCode == 200 else {
+            throw GmailAuthError.networkError("Create draft failed: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
+        }
+        if let draft = try? JSONDecoder().decode(GmailDraftResponse.self, from: data) {
+            return "Successfully created draft (draft_id: \(draft.id), message_id: \(draft.message.id))."
+        }
+        return "Successfully created draft."
+    }
+
+    func replyToThread(threadId: String, inReplyToMessageId: String, to: String, subject: String, body: String) async throws -> String {
+        var components = URLComponents(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(inReplyToMessageId)")!
+        components.queryItems = [URLQueryItem(name: "format", value: "metadata")]
+        let detail = try await decode(GmailMessageDetail.self, from: components.url!)
+        let headers = headerMap(detail.payload?.headers ?? [])
+        let messageIdHeader = headers["message-id"] ?? ""
+
+        let replySubject = subject.lowercased().hasPrefix("re:") ? subject : "Re: \(subject)"
+        let rawMessage = buildReplyEmail(
+            to: to,
+            subject: replySubject,
+            body: body,
+            inReplyTo: messageIdHeader,
+            references: messageIdHeader
+        )
+        let encoded = GmailParsing.base64URLEncode(Data(rawMessage.utf8))
+
+        var request = URLRequest(url: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/send")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "raw": encoded,
+            "threadId": threadId
+        ])
+
+        let (data, response) = try await performRequest(request)
+        guard response.statusCode == 200 else {
+            throw GmailAuthError.networkError("Reply failed: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
+        }
+        if let sent = try? JSONDecoder().decode(GmailSendResponse.self, from: data) {
+            return "Successfully sent reply in thread \(threadId). Message ID: \(sent.id)"
+        }
+        return "Successfully sent reply in thread \(threadId)."
     }
 
     // MARK: - Internals
@@ -596,10 +714,10 @@ struct GmailService {
         var htmlParts: [String] = []
         collectHTML(from: payload, into: &htmlParts)
         if !htmlParts.isEmpty {
-            return BodyExtraction(text: htmlParts.map(stripHTML).joined(separator: "\n\n"), source: "text/html (converted)")
+            return BodyExtraction(text: htmlParts.map(GmailParsing.stripHTML).joined(separator: "\n\n"), source: "text/html (converted)")
         }
 
-        if let data = payload.body?.data, let text = decodeBase64URL(data) {
+        if let data = payload.body?.data, let text = GmailParsing.decodeBase64URL(data) {
             return BodyExtraction(text: text, source: payload.mimeType ?? "unknown")
         }
 
@@ -607,7 +725,7 @@ struct GmailService {
     }
 
     private func collectPlainText(from payload: GmailMessagePayload, into parts: inout [String]) {
-        if payload.mimeType == "text/plain", let data = payload.body?.data, let text = decodeBase64URL(data) {
+        if payload.mimeType == "text/plain", let data = payload.body?.data, let text = GmailParsing.decodeBase64URL(data) {
             parts.append(text)
         }
         for part in payload.parts ?? [] {
@@ -616,7 +734,7 @@ struct GmailService {
     }
 
     private func collectHTML(from payload: GmailMessagePayload, into parts: inout [String]) {
-        if payload.mimeType == "text/html", let data = payload.body?.data, let text = decodeBase64URL(data) {
+        if payload.mimeType == "text/html", let data = payload.body?.data, let text = GmailParsing.decodeBase64URL(data) {
             parts.append(text)
         }
         for part in payload.parts ?? [] {
@@ -646,6 +764,41 @@ struct GmailService {
         }
     }
 
+    private func buildReplyEmail(to: String, subject: String, body: String, inReplyTo: String, references: String) -> String {
+        var lines = [
+            "To: \(to)",
+            "Subject: \(subject)",
+            "Content-Type: text/plain; charset=utf-8",
+            "MIME-Version: 1.0"
+        ]
+        if !inReplyTo.isEmpty { lines.append("In-Reply-To: \(inReplyTo)") }
+        if !references.isEmpty { lines.append("References: \(references)") }
+        lines.append("")
+        lines.append(body)
+        return lines.joined(separator: "\r\n")
+    }
+
+    private func fetchAttachmentData(messageId: String, attachmentId: String) async throws -> Data {
+        let url = URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(messageId)/attachments/\(attachmentId)")!
+        let attachmentBody = try await decode(GmailAttachmentBody.self, from: url)
+        guard let encoded = attachmentBody.data,
+              let data = GmailParsing.decodeBase64URLData(encoded) else {
+            throw GmailAuthError.networkError("Could not decode attachment data.")
+        }
+        return data
+    }
+
+    private func extractPDFText(from data: Data) -> String {
+        guard let document = PDFDocument(data: data) else { return "" }
+        var parts: [String] = []
+        for index in 0..<document.pageCount {
+            if let page = document.page(at: index), let pageText = page.string, !pageText.isEmpty {
+                parts.append(pageText)
+            }
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
     private func buildRawEmail(to: String, subject: String, body: String, cc: String?, bcc: String?) -> String {
         var lines = [
             "To: \(to)",
@@ -662,32 +815,6 @@ struct GmailService {
         lines.append("")
         lines.append(body)
         return lines.joined(separator: "\r\n")
-    }
-
-    private func base64URLEncode(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-    }
-
-    private func decodeBase64URL(_ input: String) -> String? {
-        var base64 = input
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let padding = 4 - (base64.count % 4)
-        if padding < 4 {
-            base64 += String(repeating: "=", count: padding)
-        }
-        guard let data = Data(base64Encoded: base64) else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    private func stripHTML(_ html: String) -> String {
-        html
-            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from url: URL) async throws -> T {
@@ -782,4 +909,23 @@ private struct GmailSendResponse: Decodable {
 private struct GmailAttachmentBody: Decodable {
     let data: String?
     let size: Int?
+}
+
+private struct GmailLabelList: Decodable {
+    let labels: [GmailLabelItem]?
+}
+
+private struct GmailLabelItem: Decodable {
+    let id: String
+    let name: String
+    let type: String?
+}
+
+private struct GmailDraftResponse: Decodable {
+    let id: String
+    let message: GmailDraftMessage
+}
+
+private struct GmailDraftMessage: Decodable {
+    let id: String
 }

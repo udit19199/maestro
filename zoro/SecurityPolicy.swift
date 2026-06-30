@@ -21,7 +21,7 @@ enum SecurityPolicy {
     static let maxIMessageReplyCharacters = 4_000
 
     static let gmailPageSize = 25
-    static let maxGmailMessagesPerOperation = 100
+    static let maxGmailMessagesPerOperation = 250
     static let maxGmailBatchRead = 20
     static let maxGmailBodyBytes = 1_048_576
     static let maxGmailAttachmentBytes = 524_288
@@ -39,6 +39,19 @@ enum SecurityPolicy {
         let lower = mimeType.lowercased()
         return gmailTextAttachmentMimePrefixes.contains { lower.hasPrefix($0) || lower == $0 }
     }
+
+    static func isGmailReadableAttachment(_ mimeType: String) -> Bool {
+        let lower = mimeType.lowercased()
+        if lower == "application/pdf" { return true }
+        return isGmailTextAttachment(mimeType)
+    }
+
+    private static let iMessageDeniedGmailActions: Set<String> = [
+        "send_email",
+        "trash_message",
+        "create_draft",
+        "reply_to_thread"
+    ]
 
     private static let iMessageAllowedTools: Set<String> = [
         "list_directory",
@@ -60,11 +73,6 @@ enum SecurityPolicy {
 
     private static let iMessageDeniedCalendarActions: Set<String> = [
         "delete_event"
-    ]
-
-    private static let iMessageDeniedGmailActions: Set<String> = [
-        "send_email",
-        "trash_message"
     ]
 
     static func contextDescription(_ context: AgentExecutionContext) -> String {

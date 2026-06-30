@@ -198,9 +198,16 @@ Setup guide: `reference/gmail-setup.md`
 
 ### Tool actions (`manage_gmail`)
 - `get_status` — account email, unread inbox, totals
-- `list_messages` / `search_messages` — **index only** (metadata + snippets); `fetchAll` defaults true
+- `list_messages` / `search_messages` — **index only**; `fetchAll` defaults true (cap 250)
 - `read_message` / `read_messages` / `read_thread` — **full bodies** with `body_complete` flag
-- `send_email` / `trash_message` — write actions (blocked in iMessage remote sessions)
+- `read_attachment` — text and PDF attachments (PDFKit)
+- `mark_read`, `archive_message`, `star_message`, `unstar_message`, `modify_labels`, `list_labels`
+- `create_draft`, `reply_to_thread`, `send_email`, `trash_message`
+
+### Hard read enforcement
+- `GmailReadAuditor` blocks assistant responses that summarize email without a `read_*` call in the same turn
+- Applied in `ContentView` (local chat) and `IMessageListener` (remote)
+- Every tool response appends `session_messages_fully_read`
 
 ### Anti-hallucination design
 1. Every tool response includes a `=== GMAIL FETCH REPORT ===` block with `fetch_complete`, `items_fetched`, and warnings.

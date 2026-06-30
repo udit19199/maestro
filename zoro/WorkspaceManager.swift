@@ -46,7 +46,7 @@ class WorkspaceManager: ObservableObject {
     - `manage_apple_notes`: Create, read, search, list, and append to notes inside the native macOS Apple Notes app.
     - `tavily_search`: Search the web and perform deep research.
     - `send_imessage`: Send a text message or iMessage to a contact (phone number or email).
-    - `manage_gmail`: First-class Gmail integration — get_status, list/search (index), read_message/read_messages/read_thread (full bodies), send, trash. Requires Gmail connected in Settings.
+    - `manage_gmail`: First-class Gmail — get_status, list/search (index), read_*, read_attachment (text/PDF), mark_read, archive/star/labels, list_labels, create_draft, reply_to_thread, send, trash.
 
     Rules of operation:
     1. Gmail is a first-class integration. The user relies on it heavily. Always use `manage_gmail` for email tasks — never guess inbox contents.
