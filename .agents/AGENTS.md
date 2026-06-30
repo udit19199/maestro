@@ -131,7 +131,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
-- **No Tests Yet**: There is currently no test target or test suite. When adding tests, create a standard Xcode test target.
+- **No Tests Yet**: There is a `zoroTests` unit test target with Gmail parsing tests. Run via ⌘U in Xcode.
 
 ---
 
@@ -216,7 +216,7 @@ Setup guide: `reference/gmail-setup.md`
 4. Connect/disconnect calls `WorkspaceManager.invalidateSessionsForConfigChange()` so new sessions pick up Gmail rules.
 
 ### Security & limits (`SecurityPolicy.swift`)
-- `gmailPageSize` = 25, `maxGmailMessagesPerOperation` = 100, `maxGmailBatchRead` = 20
+- `gmailPageSize` = 25, `maxGmailMessagesPerOperation` = 250, `maxGmailBatchRead` = 20
 - `maxGmailBodyBytes` = 1 MB, `gmailMaxRetries` = 5 (429/5xx backoff)
 - iMessage remote: read/search allowed; send/trash denied via `isGmailActionPermitted()`
 
@@ -229,15 +229,9 @@ Setup guide: `reference/gmail-setup.md`
 `http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
 
 ### Known gaps (not yet implemented)
-- PDF/image attachment parsing — use `read_attachment` for text types only today
-- Hard enforcement blocking LLM replies that cite unread message IDs (instruction + session tracking today)
+- Image attachment OCR — text/PDF only today
 - Background push via Gmail Pub/Sub (requires public HTTPS endpoint)
-- Automated tests
 
-### Recently added
-- **PKCE** (S256) on OAuth authorization flow
-- **Session read tracking** — `session_messages_fully_read` appended to every tool response
-- **read_attachment** — text/plain, HTML, JSON, CSV, XML attachments
-- **mark_read** — remove UNREAD label
-- **Auto-refresh** — inbox snapshot every 5 minutes when connected
+### Test target
+- `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests` for offline parsing coverage
 
