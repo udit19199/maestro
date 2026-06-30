@@ -76,6 +76,10 @@ struct ContentView: View {
     @State private var anthropicApiKey: String = ""
     @State private var geminiApiKey: String = ""
     @State private var tavilyApiKey: String = ""
+    @State private var gmailClientId: String = ""
+    @State private var gmailClientSecret: String = ""
+    @ObservedObject private var gmailAuth = GmailAuthManager.shared
+    @State private var gmailStatusMessage: String = "Not connected"
     @State private var showSettings: Bool = false
     @State private var modelAvailabilityMessage: String = "Checking availability..."
     @State private var isModelReady: Bool = false
@@ -198,7 +202,83 @@ struct ContentView: View {
                                 KeychainHelper.save(key: "tavily_api_key", value: newValue)
                             }
                     }
-                    
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Gmail Integration")
+                            .font(.system(.subheadline, design: .rounded))
+                            .bold()
+                            .foregroundColor(.primary)
+
+                        Text("Create OAuth 2.0 Desktop credentials in Google Cloud Console, enable the Gmail API, and set the redirect URI to http://127.0.0.1:8765/")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Google OAuth Client ID:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("Enter OAuth Client ID", text: $gmailClientId)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                                .onChange(of: gmailClientId) { oldValue, newValue in
+                                    KeychainHelper.save(key: "gmail_client_id", value: newValue)
+                                }
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Google OAuth Client Secret:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            SecureField("Enter OAuth Client Secret", text: $gmailClientSecret)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                                .onChange(of: gmailClientSecret) { oldValue, newValue in
+                                    KeychainHelper.save(key: "gmail_client_secret", value: newValue)
+                                }
+                        }
+
+                        HStack(spacing: 12) {
+                            if gmailAuth.isConnected {
+                                Button("Disconnect Gmail") {
+                                    gmailAuth.disconnect()
+                                    gmailStatusMessage = "Disconnected"
+                                }
+                                .buttonStyle(.bordered)
+                            } else {
+                                Button(gmailAuth.isAuthorizing ? "Connecting..." : "Connect Gmail") {
+                                    Task {
+                                        do {
+                                            try await gmailAuth.connect()
+                                            if let email = gmailAuth.connectedEmail {
+                                                gmailStatusMessage = "Connected as \(email)"
+                                            } else {
+                                                gmailStatusMessage = "Connected"
+                                            }
+                                        } catch {
+                                            gmailStatusMessage = error.localizedDescription
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(
+                                    gmailAuth.isAuthorizing ||
+                                    gmailClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                    gmailClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                )
+                            }
+                        }
+
+                        HStack(spacing: 8) {
+                            Image(systemName: gmailAuth.isConnected ? "checkmark.circle.fill" : "envelope")
+                                .foregroundColor(gmailAuth.isConnected ? .green : .secondary)
+                            Text(gmailStatusMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
                     Divider()
                     
                     VStack(alignment: .leading, spacing: 10) {
@@ -436,7 +516,22 @@ struct ContentView: View {
             self.anthropicApiKey = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
             self.geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
             self.tavilyApiKey = KeychainHelper.retrieve(key: "tavily_api_key") ?? ""
-            
+            self.gmailClientId = KeychainHelper.retrieve(key: "gmail_client_id") ?? ""
+            self.gmailClientSecret = KeychainHelper.retrieve(key: "gmail_client_secret") ?? ""
+
+            Task {
+                await gmailAuth.refreshConnectionStatus()
+                await MainActor.run {
+                    if gmailAuth.isConnected, let email = gmailAuth.connectedEmail {
+                        gmailStatusMessage = "Connected as \(email)"
+                    } else if gmailAuth.isConnected {
+                        gmailStatusMessage = "Connected"
+                    } else {
+                        gmailStatusMessage = "Not connected"
+                    }
+                }
+            }
+
             self.imessageListenerEnabled = UserDefaults.standard.bool(forKey: "imessage_listener_enabled")
             self.imessageSenderWhitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
             self.imessagePasscode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""

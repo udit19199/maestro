@@ -29,7 +29,8 @@ enum SecurityPolicy {
         "manage_calendar_and_reminders",
         "manage_apple_notes",
         "tavily_search",
-        "send_imessage"
+        "send_imessage",
+        "manage_gmail"
     ]
 
     private static let iMessageDeniedNoteActions: Set<String> = [
@@ -39,6 +40,11 @@ enum SecurityPolicy {
 
     private static let iMessageDeniedCalendarActions: Set<String> = [
         "delete_event"
+    ]
+
+    private static let iMessageDeniedGmailActions: Set<String> = [
+        "send_email",
+        "trash_message"
     ]
 
     static func contextDescription(_ context: AgentExecutionContext) -> String {
@@ -74,6 +80,15 @@ enum SecurityPolicy {
             return true
         case .iMessage:
             return !iMessageDeniedCalendarActions.contains(action)
+        }
+    }
+
+    static func isGmailActionPermitted(_ action: String, context: AgentExecutionContext) -> Bool {
+        switch context {
+        case .local:
+            return true
+        case .iMessage:
+            return !iMessageDeniedGmailActions.contains(action)
         }
     }
 
