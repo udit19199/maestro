@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lesson 6: Gmail Integration</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            color: #111;
+            background-color: #fffff8;
+            line-height: 1.6;
+            max-width: 720px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 400;
+            font-style: italic;
+            font-size: 2.2rem;
+            line-height: 1.2;
+            margin-bottom: 0.5rem;
+        }
+        h2 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 300;
+            font-size: 1.5rem;
+            margin-top: 2rem;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+        }
+        h3 {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            font-weight: 500;
+            font-size: 1.1rem;
+            margin-top: 1.5rem;
+        }
+        p { margin-bottom: 1.5rem; font-size: 1.05rem; }
+        a { color: #1b5e20; }
+        code {
+            font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+            font-size: 0.9em;
+            background-color: #f7f7f7;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        pre {
+            background-color: #f7f7f7;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid #e0e0e0;
+            font-size: 0.85rem;
+        }
+        .highlight {
+            border-left: 3px solid #c62828;
+            padding: 10px 15px;
+            margin: 20px 0;
+            background-color: #fff5f5;
+            font-style: italic;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 0.95rem;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th { background: #f7f7f7; font-family: "Helvetica Neue", Arial, sans-serif; }
+        .flow-step {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 10px 0;
+        }
+        .flow-title { font-weight: bold; color: #c62828; margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Lesson 6: Gmail Integration</h1>
+    <p>Gmail is a <strong>first-class integration</strong> in Zoro — not an afterthought tool. This lesson explains how OAuth, the API client, UI state, and agent instructions work together to reduce hallucinations and incomplete email fetches.</p>
+
+    <h2>Why Gmail Is Different From Other Tools</h2>
+    <p>Most Zoro tools (files, shell, notes) operate on local data you control. Gmail requires:</p>
+    <ul>
+        <li><strong>OAuth</strong> — the user authorizes Zoro to access their mailbox.</li>
+        <li><strong>Network pagination</strong> — search results may span many API pages.</li>
+        <li><strong>Index vs body</strong> — Gmail's list/search APIs return snippets, not full email text.</li>
+    </ul>
+    <div class="highlight">
+        The #1 hallucination risk: the LLM summarizes email from <code>snippet</code> fields without calling <code>read_message</code> or <code>read_thread</code>. Zoro's design explicitly separates these steps.
+    </div>
+
+    <h2>The Four Gmail Files</h2>
+    <table>
+        <tr><th>File</th><th>Role</th></tr>
+        <tr><td><code>GmailAuthManager.swift</code></td><td>OAuth 2.0 desktop flow, access/refresh tokens in Keychain</td></tr>
+        <tr><td><code>GmailService.swift</code></td><td>REST API client — pagination, retries, structured fetch reports</td></tr>
+        <tr><td><code>GmailManager.swift</code></td><td>UI state: inbox preview, unread count, activity log, agent context</td></tr>
+        <tr><td><code>GmailTool.swift</code></td><td><code>manage_gmail</code> tool the LLM calls</td></tr>
+    </table>
+
+    <h2>OAuth Flow (Connect Gmail)</h2>
+    <div class="flow-step">
+        <div class="flow-title">1. User enters Client ID + Secret</div>
+        Saved to Keychain via <code>KeychainHelper</code> (same pattern as Anthropic/Tavily keys).
+    </div>
+    <div class="flow-step">
+        <div class="flow-title">2. Connect Gmail starts local server on port 8765</div>
+        <code>OAuthCallbackServer</code> listens for Google's redirect with the authorization code.
+    </div>
+    <div class="flow-step">
+        <div class="flow-title">3. Browser opens Google consent</div>
+        User approves scopes: readonly, send, modify.
+    </div>
+    <div class="flow-step">
+        <div class="flow-title">4. Tokens stored, inbox synced</div>
+        Refresh token in Keychain; <code>GmailManager.refreshSnapshot()</code> loads unread count and preview.
+    </div>
+    <p>Setup details: see <a href="../reference/gmail-setup.md">reference/gmail-setup.md</a>.</p>
+
+    <h2>The Fetch Report Pattern</h2>
+    <p>Every <code>manage_gmail</code> call returns a structured header:</p>
+    <pre><code>=== GMAIL FETCH REPORT ===
+action: search_messages
+result_size_estimate: 47
+items_fetched: 47
+fetch_complete: true
+next_page_token: none
+warnings:
+  - Results are an INDEX with snippets only.
+  - You MUST call read_message before summarizing...
+=== END REPORT ===</code></pre>
+    <p>This gives the LLM explicit signals about completeness — it cannot plausibly claim "I fetched all 47 emails" when <code>fetch_complete: false</code>.</p>
+
+    <h2>Tool Actions</h2>
+    <table>
+        <tr><th>Action</th><th>Returns</th><th>Use when</th></tr>
+        <tr><td><code>get_status</code></td><td>Email, unread count, totals</td><td>"How many unread?"</td></tr>
+        <tr><td><code>list_messages</code></td><td>Index (metadata + snippets)</td><td>Browse inbox/labels</td></tr>
+        <tr><td><code>search_messages</code></td><td>Index</td><td>Gmail search syntax</td></tr>
+        <tr><td><code>read_message</code></td><td>Full body + <code>body_complete</code></td><td>Single email content</td></tr>
+        <tr><td><code>read_messages</code></td><td>Batch full bodies (max 20)</td><td>Multiple specific IDs</td></tr>
+        <tr><td><code>read_thread</code></td><td>All messages in conversation</td><td>Thread summaries</td></tr>
+        <tr><td><code>read_attachment</code></td><td>Text attachment content</td><td>Plain/HTML/JSON/CSV attachments</td></tr>
+        <tr><td><code>mark_read</code></td><td>Removes UNREAD label</td><td>"Mark as read"</td></tr>
+        <tr><td><code>send_email</code></td><td>Confirmation + message ID</td><td>Compose/send</td></tr>
+        <tr><td><code>trash_message</code></td><td>Confirmation</td><td>Move to trash</td></tr>
+    </table>
+
+    <h2>Agent Instructions Injection</h2>
+    <p>When Gmail is connected, <code>WorkspaceManager.makeSession()</code> appends live context from <code>GmailManager.contextualInstructions()</code>:</p>
+    <ul>
+        <li>Connected email address and unread count</li>
+        <li>Mandatory rules: never invent IDs, always read before summarizing, cite message IDs</li>
+    </ul>
+    <p>Sessions are invalidated (<code>invalidateSessionsForConfigChange()</code>) when Gmail connects or disconnects so new instructions take effect.</p>
+
+    <h2>UI: First-Class Visibility</h2>
+    <ul>
+        <li><strong>Header badge</strong> — email, unread count, sync time, manual refresh</li>
+        <li><strong>Inbox preview panel</strong> — latest messages (ground truth you can eyeball)</li>
+        <li><strong>Gmail activity log</strong> — what the agent fetched during the current prompt</li>
+    </ul>
+
+    <h2>Swift Concepts Used</h2>
+    <ul>
+        <li><code>@MainActor class GmailManager: ObservableObject</code> — UI-bound state on the main thread</li>
+        <li><code>async/await</code> + <code>URLSession</code> — Gmail API calls without blocking UI</li>
+        <li><code>withCheckedThrowingContinuation</code> — OAuth callback server bridges socket code to async</li>
+        <li><code>SecurityPolicy</code> limits — max messages per fetch, body bytes, retry count</li>
+    </ul>
+
+    <h2>Retrieval Practice</h2>
+    <p><strong>Question:</strong> A user asks "Summarize my latest email from Alice." What is the correct tool sequence?</p>
+    <p><strong>Answer:</strong></p>
+    <ol>
+        <li><code>search_messages</code> with query <code>from:alice</code> (returns index with message ID)</li>
+        <li><code>read_message</code> or <code>read_thread</code> using the ID from step 1</li>
+        <li>Summarize only from the full body in step 2 — never from the snippet</li>
+    </ol>
+</body>
+</html>

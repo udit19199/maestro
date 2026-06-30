@@ -76,6 +76,11 @@ struct ContentView: View {
     @State private var anthropicApiKey: String = ""
     @State private var geminiApiKey: String = ""
     @State private var tavilyApiKey: String = ""
+    @State private var gmailClientId: String = ""
+    @State private var gmailClientSecret: String = ""
+    @ObservedObject private var gmailAuth = GmailAuthManager.shared
+    @ObservedObject private var gmailManager = GmailManager.shared
+    @State private var gmailStatusMessage: String = "Not connected"
     @State private var showSettings: Bool = false
     @State private var modelAvailabilityMessage: String = "Checking availability..."
     @State private var isModelReady: Bool = false
@@ -109,7 +114,54 @@ struct ContentView: View {
                 }
                 
                 Spacer()
-                
+
+                if gmailAuth.isConnected {
+                    HStack(spacing: 10) {
+                        Image(systemName: "envelope.fill")
+                            .font(.title3)
+                            .foregroundColor(.red)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(gmailAuth.connectedEmail ?? "Gmail")
+                                .font(.subheadline)
+                                .bold()
+                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                if let unread = gmailManager.unreadCount {
+                                    Text("\(unread) unread")
+                                        .font(.caption)
+                                        .foregroundColor(unread > 0 ? .orange : .secondary)
+                                }
+                                if gmailManager.isSyncing {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                } else if let synced = gmailManager.lastSyncedAt {
+                                    Text("synced \(synced, style: .time)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+
+                        Button(action: {
+                            Task { await gmailManager.refreshSnapshot() }
+                        }) {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Refresh Gmail inbox")
+                        .disabled(gmailManager.isSyncing)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                    )
+                }
+
                 Button(action: selectWorkspaceFolder) {
                     Label("Open Workspace", systemImage: "square.and.arrow.down")
                 }
@@ -198,7 +250,84 @@ struct ContentView: View {
                                 KeychainHelper.save(key: "tavily_api_key", value: newValue)
                             }
                     }
-                    
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Gmail Integration")
+                            .font(.system(.subheadline, design: .rounded))
+                            .bold()
+                            .foregroundColor(.primary)
+
+                        Text("Create OAuth 2.0 Desktop credentials in Google Cloud Console, enable the Gmail API, and set the redirect URI to http://127.0.0.1:8765/")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Google OAuth Client ID:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextField("Enter OAuth Client ID", text: $gmailClientId)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                                .onChange(of: gmailClientId) { oldValue, newValue in
+                                    KeychainHelper.save(key: "gmail_client_id", value: newValue)
+                                }
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Google OAuth Client Secret:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            SecureField("Enter OAuth Client Secret", text: $gmailClientSecret)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(.body, design: .monospaced))
+                                .onChange(of: gmailClientSecret) { oldValue, newValue in
+                                    KeychainHelper.save(key: "gmail_client_secret", value: newValue)
+                                }
+                        }
+
+                        HStack(spacing: 12) {
+                            if gmailAuth.isConnected {
+                                Button("Disconnect Gmail") {
+                                    gmailAuth.disconnect()
+                                    gmailStatusMessage = "Disconnected"
+                                }
+                                .buttonStyle(.bordered)
+                            } else {
+                                Button(gmailAuth.isAuthorizing ? "Connecting..." : "Connect Gmail") {
+                                    Task {
+                                        do {
+                                            try await gmailAuth.connect()
+                                            await gmailManager.refreshSnapshot()
+                                            if let email = gmailAuth.connectedEmail {
+                                                gmailStatusMessage = "Connected as \(email)"
+                                            } else {
+                                                gmailStatusMessage = "Connected"
+                                            }
+                                        } catch {
+                                            gmailStatusMessage = error.localizedDescription
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(
+                                    gmailAuth.isAuthorizing ||
+                                    gmailClientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                    gmailClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                )
+                            }
+                        }
+
+                        HStack(spacing: 8) {
+                            Image(systemName: gmailAuth.isConnected ? "checkmark.circle.fill" : "envelope")
+                                .foregroundColor(gmailAuth.isConnected ? .green : .secondary)
+                            Text(gmailStatusMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
                     Divider()
                     
                     VStack(alignment: .leading, spacing: 10) {
@@ -325,6 +454,73 @@ struct ContentView: View {
                 Divider()
             }
             
+            // Gmail inbox preview (when connected)
+            if gmailAuth.isConnected && !gmailManager.inboxPreview.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Gmail Inbox")
+                            .font(.caption)
+                            .bold()
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if let unread = gmailManager.unreadCount, unread > 0 {
+                            Text("\(unread) unread")
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                        }
+                    }
+
+                    ForEach(gmailManager.inboxPreview.prefix(5)) { item in
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(item.isUnread ? Color.orange : Color.clear)
+                                .frame(width: 6, height: 6)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.subject)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .fontWeight(item.isUnread ? .semibold : .regular)
+                                Text("\(item.from) · \(item.date)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding([.horizontal, .top])
+            }
+
+            // Gmail fetch activity
+            if !gmailManager.activityLog.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Gmail Activity")
+                        .font(.caption)
+                        .bold()
+                        .foregroundColor(.secondary)
+
+                    ForEach(gmailManager.activityLog.suffix(6)) { entry in
+                        HStack(spacing: 8) {
+                            Image(systemName: gmailActivityIcon(for: entry.status))
+                                .font(.system(size: 11))
+                                .foregroundColor(gmailActivityColor(for: entry.status))
+                            Text(entry.message)
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding([.horizontal, .top])
+            }
+
             // If there are active todos, show a compact planning checklist in the header
             if !workspace.activeTodos.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -436,7 +632,23 @@ struct ContentView: View {
             self.anthropicApiKey = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
             self.geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
             self.tavilyApiKey = KeychainHelper.retrieve(key: "tavily_api_key") ?? ""
-            
+            self.gmailClientId = KeychainHelper.retrieve(key: "gmail_client_id") ?? ""
+            self.gmailClientSecret = KeychainHelper.retrieve(key: "gmail_client_secret") ?? ""
+
+            Task {
+                await gmailAuth.refreshConnectionStatus()
+                await gmailManager.refreshSnapshot()
+                await MainActor.run {
+                    if gmailAuth.isConnected, let email = gmailAuth.connectedEmail {
+                        gmailStatusMessage = "Connected as \(email)"
+                    } else if gmailAuth.isConnected {
+                        gmailStatusMessage = "Connected"
+                    } else {
+                        gmailStatusMessage = "Not connected"
+                    }
+                }
+            }
+
             self.imessageListenerEnabled = UserDefaults.standard.bool(forKey: "imessage_listener_enabled")
             self.imessageSenderWhitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
             self.imessagePasscode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""
@@ -588,6 +800,8 @@ struct ContentView: View {
         
         prompt = ""
         workspace.clearResearchSteps()
+        gmailManager.clearActivity()
+        GmailReadAuditor.resetPromptState()
         
         // Handle reply to active clarification
         if let continuation = workspace.clarifyContinuation {
@@ -658,6 +872,13 @@ struct ContentView: View {
                 
                 await MainActor.run {
                     workspace.conversationSummary = nil
+                    if let lastIndex = workspace.messages.indices.last {
+                        let audited = GmailReadAuditor.auditAssistantResponse(
+                            workspace.messages[lastIndex].content,
+                            userPrompt: text
+                        )
+                        workspace.messages[lastIndex].content = audited
+                    }
                     isRunning = false
                 }
             } catch {
@@ -747,6 +968,24 @@ struct ContentView: View {
     }
     
     private func researchStepColor(for status: String) -> Color {
+        switch status {
+        case "completed": return .green
+        case "in_progress": return .blue
+        case "failed": return .red
+        default: return .secondary
+        }
+    }
+
+    private func gmailActivityIcon(for status: String) -> String {
+        switch status {
+        case "completed": return "checkmark.circle.fill"
+        case "in_progress": return "arrow.triangle.2.circlepath.circle.fill"
+        case "failed": return "exclamationmark.circle.fill"
+        default: return "circle"
+        }
+    }
+
+    private func gmailActivityColor(for status: String) -> Color {
         switch status {
         case "completed": return .green
         case "in_progress": return .blue

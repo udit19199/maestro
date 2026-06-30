@@ -20,6 +20,39 @@ enum SecurityPolicy {
     static let iMessageRateLimitPerMinute = 5
     static let maxIMessageReplyCharacters = 4_000
 
+    static let gmailPageSize = 25
+    static let maxGmailMessagesPerOperation = 250
+    static let maxGmailBatchRead = 20
+    static let maxGmailBodyBytes = 1_048_576
+    static let maxGmailAttachmentBytes = 524_288
+    static let gmailMaxRetries = 5
+    static let gmailAutoRefreshSeconds: TimeInterval = 300
+
+    private static let gmailTextAttachmentMimePrefixes = [
+        "text/",
+        "application/json",
+        "application/xml",
+        "application/csv"
+    ]
+
+    static func isGmailTextAttachment(_ mimeType: String) -> Bool {
+        let lower = mimeType.lowercased()
+        return gmailTextAttachmentMimePrefixes.contains { lower.hasPrefix($0) || lower == $0 }
+    }
+
+    static func isGmailReadableAttachment(_ mimeType: String) -> Bool {
+        let lower = mimeType.lowercased()
+        if lower == "application/pdf" { return true }
+        return isGmailTextAttachment(mimeType)
+    }
+
+    private static let iMessageDeniedGmailActions: Set<String> = [
+        "send_email",
+        "trash_message",
+        "create_draft",
+        "reply_to_thread"
+    ]
+
     private static let iMessageAllowedTools: Set<String> = [
         "list_directory",
         "read_file",
@@ -29,7 +62,8 @@ enum SecurityPolicy {
         "manage_calendar_and_reminders",
         "manage_apple_notes",
         "tavily_search",
-        "send_imessage"
+        "send_imessage",
+        "manage_gmail"
     ]
 
     private static let iMessageDeniedNoteActions: Set<String> = [
@@ -74,6 +108,15 @@ enum SecurityPolicy {
             return true
         case .iMessage:
             return !iMessageDeniedCalendarActions.contains(action)
+        }
+    }
+
+    static func isGmailActionPermitted(_ action: String, context: AgentExecutionContext) -> Bool {
+        switch context {
+        case .local:
+            return true
+        case .iMessage:
+            return !iMessageDeniedGmailActions.contains(action)
         }
     }
 
