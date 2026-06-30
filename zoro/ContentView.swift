@@ -88,6 +88,7 @@ struct ContentView: View {
     @State private var imessageSenderWhitelist: String = ""
     @State private var imessagePasscode: String = ""
     @State private var hasFullDiskAccess: Bool = true
+    @State private var imessageSecurityWarning: String? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -208,7 +209,23 @@ struct ContentView: View {
                         
                         Toggle("Enable iMessage Command Listener", isOn: $imessageListenerEnabled)
                             .onChange(of: imessageListenerEnabled) { oldValue, newValue in
-                                UserDefaults.standard.set(newValue, forKey: "imessage_listener_enabled")
+                                if newValue {
+                                    let passcode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""
+                                    if passcode.isEmpty {
+                                        imessageListenerEnabled = false
+                                        imessageSecurityWarning = "A passcode is required before enabling the iMessage listener."
+                                        return
+                                    }
+                                    if imessageSenderWhitelist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        imessageListenerEnabled = false
+                                        imessageSecurityWarning = "Add at least one whitelisted sender before enabling the iMessage listener."
+                                        return
+                                    }
+                                    imessageSecurityWarning = nil
+                                } else {
+                                    imessageSecurityWarning = nil
+                                }
+                                UserDefaults.standard.set(imessageListenerEnabled, forKey: "imessage_listener_enabled")
                                 toggleIMessageListener()
                             }
                         
@@ -226,7 +243,7 @@ struct ContentView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("Command Passcode (Optional - Zoro will ignore texts without it):")
+                                Text("Command Passcode (Required for remote commands):")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 SecureField("Enter passcode to unlock commands", text: $imessagePasscode)
@@ -235,10 +252,32 @@ struct ContentView: View {
                                     .onChange(of: imessagePasscode) { oldValue, newValue in
                                         if newValue.isEmpty {
                                             KeychainHelper.delete(key: "imessage_passcode")
+                                            if imessageListenerEnabled {
+                                                imessageListenerEnabled = false
+                                                UserDefaults.standard.set(false, forKey: "imessage_listener_enabled")
+                                                toggleIMessageListener()
+                                            }
+                                            imessageSecurityWarning = "Passcode removed. iMessage listener disabled."
                                         } else {
                                             KeychainHelper.save(key: "imessage_passcode", value: newValue)
+                                            imessageSecurityWarning = nil
                                         }
                                     }
+                            }
+
+                            Text("Remote iMessage sessions are restricted to read-only workspace access and can only reply to the sender. Shell commands and file writes are blocked remotely.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            if let warning = imessageSecurityWarning {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                    Text(warning)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.top, 4)
                             }
                             
                             if !hasFullDiskAccess {
@@ -402,6 +441,15 @@ struct ContentView: View {
             self.imessageSenderWhitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
             self.imessagePasscode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""
             self.hasFullDiskAccess = checkFullDiskAccess()
+
+            let savedWhitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
+            if imessageListenerEnabled {
+                if imessagePasscode.isEmpty || savedWhitelist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    imessageListenerEnabled = false
+                    UserDefaults.standard.set(false, forKey: "imessage_listener_enabled")
+                    imessageSecurityWarning = "iMessage listener disabled: passcode and whitelist are required."
+                }
+            }
             
             if let savedModelType = UserDefaults.standard.string(forKey: "selected_model_type"),
                let model = ModelType(rawValue: savedModelType) {
@@ -411,7 +459,11 @@ struct ContentView: View {
             updateModelAvailability()
             
             if imessageListenerEnabled && hasFullDiskAccess {
-                IMessageListener.shared.start()
+                let passcode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""
+                let whitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
+                if !passcode.isEmpty && !whitelist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    IMessageListener.shared.start()
+                }
             }
         }
     }
@@ -442,6 +494,15 @@ struct ContentView: View {
     private func toggleIMessageListener() {
         hasFullDiskAccess = checkFullDiskAccess()
         if imessageListenerEnabled && hasFullDiskAccess {
+            let passcode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""
+            let whitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
+            if passcode.isEmpty || whitelist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                imessageListenerEnabled = false
+                UserDefaults.standard.set(false, forKey: "imessage_listener_enabled")
+                IMessageListener.shared.stop()
+                imessageSecurityWarning = "iMessage listener requires both a passcode and at least one whitelisted sender."
+                return
+            }
             IMessageListener.shared.start()
         } else {
             IMessageListener.shared.stop()

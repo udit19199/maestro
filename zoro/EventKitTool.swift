@@ -41,6 +41,16 @@ struct EventKitTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        let workspace = await WorkspaceManager.shared
+        if let permissionError = await workspace.toolPermissionError(for: name) {
+            return permissionError
+        }
+
+        let context = await workspace.currentExecutionContext
+        guard SecurityPolicy.isCalendarActionPermitted(arguments.action, context: context) else {
+            return "Error: Calendar action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(context))."
+        }
+
         let eventStore = EKEventStore()
         
         // Request permissions
