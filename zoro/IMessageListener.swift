@@ -21,7 +21,8 @@ class IMessageListener {
     private var isListening = false
     
     private var requestTimestamps: [Date] = []
-    private let maxRequestsPerMinute = 5
+    private let maxRequestsPerMinute = SecurityPolicy.iMessageRateLimitPerMinute
+    private let pollQueue = DispatchQueue(label: "com.zoro.imessagelistener.poll")
     
     private var dbPath: String {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -49,7 +50,9 @@ class IMessageListener {
             )
             
             source.setEventHandler { [weak self] in
-                self?.checkForNewMessages()
+                self?.pollQueue.async {
+                    self?.checkForNewMessages()
+                }
             }
             
             source.setCancelHandler { [weak self] in
@@ -66,7 +69,9 @@ class IMessageListener {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.fallbackTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
-                self?.checkForNewMessages()
+                self?.pollQueue.async {
+                    self?.checkForNewMessages()
+                }
             }
         }
     }
@@ -121,7 +126,7 @@ class IMessageListener {
         LEFT JOIN handle h ON m.handle_id = h.rowid
         LEFT JOIN message_attachment_join maj ON maj.message_id = m.rowid
         LEFT JOIN attachment a ON a.rowid = maj.attachment_id
-        WHERE m.rowid > ?
+        WHERE m.rowid > ? AND m.is_from_me = 0
         ORDER BY m.rowid ASC;
         """
         
@@ -285,13 +290,16 @@ class IMessageListener {
         
         var finalPrompt = commandText
         for path in attachments {
-            let expandedPath = path.replacingOccurrences(of: "~", with: FileManager.default.homeDirectoryForCurrentUser.path)
-            let url = URL(fileURLWithPath: expandedPath)
+            guard let url = SecurityPolicy.resolveIMessageAttachmentPath(path) else {
+                finalPrompt += "\n\n[Attachment skipped: path is outside the Messages attachments directory]"
+                continue
+            }
+
             let filename = url.lastPathComponent
             let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-            
+
             if isTextFile(url) {
-                if fileSize > 1_048_576 { // 1MB Cap
+                if fileSize > SecurityPolicy.maxIMessageAttachmentBytes {
                     finalPrompt += "\n\n[Attachment: \(filename) (Text file, \(fileSize) bytes) is too large to read entirely. Stored locally at: \(url.path)]"
                 } else if let fileContent = try? String(contentsOf: url, encoding: .utf8) {
                     finalPrompt += "\n\n[Attachment: \(filename)]\n```\n\(fileContent)\n```"

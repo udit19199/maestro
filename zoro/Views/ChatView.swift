@@ -201,7 +201,7 @@ struct ChatView: View {
         guard let agent = conversation?.agentType else { return "Model status" }
         switch agent {
         case .default:
-            return "Using Apple Intelligence"
+            return "Using \(workspace.selectedModelType.rawValue)"
         default:
             let preferred = ModelType.preferredForSpecializedAgents()
             return "Using \(preferred.rawValue)"

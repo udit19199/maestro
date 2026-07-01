@@ -33,8 +33,8 @@ struct IMessageTool: Tool {
             stepId = nil
         }
         
-        let escapedText = escapeForAppleScript(arguments.text)
-        let escapedRecipient = escapeForAppleScript(arguments.recipient)
+        let escapedText = SecurityPolicy.escapeForAppleScript(arguments.text)
+        let escapedRecipient = SecurityPolicy.escapeForAppleScript(arguments.recipient)
         
         let serviceType = arguments.service?.lowercased() ?? "auto"
         var script = ""
@@ -93,18 +93,10 @@ struct IMessageTool: Tool {
         process.waitUntilExit()
         
         if process.terminationStatus != 0 {
-            let errData = try? pipe.fileHandleForReading.readToEnd()
-            let errStr = errData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let errStr = String(data: data, encoding: .utf8) ?? ""
             throw NSError(domain: "AppleScriptError", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: errStr])
         }
-        
-        return String(data: data, encoding: .utf8) ?? ""
-    }
 
-    private func escapeForAppleScript(_ text: String) -> String {
-        var escaped = text
-        escaped = escaped.replacingOccurrences(of: "\\", with: "\\\\")
-        escaped = escaped.replacingOccurrences(of: "\"", with: "\\\"")
-        return escaped
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }

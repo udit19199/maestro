@@ -174,7 +174,7 @@ final class AgentRunner: ObservableObject {
     private func resolvedModelType(for agentType: AgentType, userSelected: ModelType) -> ModelType {
         switch agentType {
         case .default:
-            return .system
+            return userSelected
         case .research, .planner, .teach:
             return ModelType.preferredForSpecializedAgents()
         }
@@ -308,6 +308,18 @@ final class AgentRunner: ObservableObject {
                 tools: toolSet,
                 instructions: instructions
             )
+        case .codex:
+            guard KeychainHelper.retrieve(key: "codex_refresh_token") != nil else {
+                throw modelKeyError("Codex is not connected. Sign in with your ChatGPT account in Settings.")
+            }
+            let modelName = CodexAuthSupport.normalizedModelName(
+                UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+            )
+            newSession = LanguageModelSession(
+                model: CodexLanguageModel(modelName: modelName),
+                tools: toolSet,
+                instructions: instructions
+            )
         }
 
         sessions[conversationID] = newSession
@@ -356,6 +368,10 @@ final class AgentRunner: ObservableObject {
             let key = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
             if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return "Please enter your OpenAI API key in Settings."
+            }
+        case .codex:
+            if KeychainHelper.retrieve(key: "codex_refresh_token") == nil {
+                return "Sign in with ChatGPT or import from Codex CLI in Settings."
             }
         }
         return nil
@@ -410,6 +426,11 @@ final class AgentRunner: ObservableObject {
                 tempSession = LanguageModelSession(
                     model: OpenAILanguageModel(modelName: "gpt-4o-mini", apiKey: openaiApiKey)
                 )
+            case .codex:
+                let modelName = CodexAuthSupport.normalizedModelName(
+                    UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+                )
+                tempSession = LanguageModelSession(model: CodexLanguageModel(modelName: modelName))
             }
 
             let prompt = """

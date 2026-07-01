@@ -12,11 +12,14 @@ struct SettingsView: View {
     @ObservedObject private var workspace = WorkspaceManager.shared
     @ObservedObject private var profileStore = ProfileStore.shared
     @ObservedObject private var briefingService = BriefingService.shared
+    @ObservedObject private var codexAuth = CodexAuthManager.shared
 
     @State private var anthropicApiKey = ""
     @State private var geminiApiKey = ""
     @State private var openaiApiKey = ""
     @State private var tavilyApiKey = ""
+    @State private var codexModelName = "gpt-5-codex"
+    @State private var codexStatusMessage = "Not connected"
     @State private var modelAvailabilityMessage = "Checking availability..."
     @State private var isModelReady = false
 
@@ -84,6 +87,104 @@ struct SettingsView: View {
                             updateModelAvailability()
                             workspace.resetSession()
                         }
+                }
+
+                if workspace.selectedModelType == .codex {
+                    Text("Uses your ChatGPT / Codex subscription (same backend as the Codex CLI, not api.openai.com).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Codex model name", text: $codexModelName)
+                        .onChange(of: codexModelName) { _, newValue in
+                            UserDefaults.standard.set(newValue, forKey: "codex_model_name")
+                            workspace.invalidateSessionsForConfigChange()
+                            updateModelAvailability()
+                        }
+
+                    HStack(spacing: 12) {
+                        if codexAuth.isConnected {
+                            Button("Disconnect Codex") {
+                                Task {
+                                    await codexAuth.disconnect()
+                                    codexStatusMessage = "Disconnected"
+                                    updateModelAvailability()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button(codexAuth.isAuthorizing ? "Signing in..." : "Sign in with ChatGPT") {
+                                Task {
+                                    do {
+                                        try await codexAuth.connect()
+                                        if let email = codexAuth.connectedEmail {
+                                            codexStatusMessage = "Connected as \(email)"
+                                        } else {
+                                            codexStatusMessage = "Connected"
+                                        }
+                                        updateModelAvailability()
+                                    } catch {
+                                        codexStatusMessage = error.localizedDescription
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(codexAuth.isAuthorizing)
+
+                            Button("Import from Codex CLI") {
+                                do {
+                                    try codexAuth.importFromCLI()
+                                    if let email = codexAuth.connectedEmail {
+                                        codexStatusMessage = "Imported credentials for \(email)"
+                                    } else {
+                                        codexStatusMessage = "Imported Codex CLI credentials"
+                                    }
+                                    updateModelAvailability()
+                                } catch {
+                                    codexStatusMessage = error.localizedDescription
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(codexAuth.isAuthorizing)
+
+                            Button("Device Code") {
+                                Task {
+                                    do {
+                                        try await codexAuth.startDeviceCodeLogin()
+                                        if let email = codexAuth.connectedEmail {
+                                            codexStatusMessage = "Connected as \(email)"
+                                        } else {
+                                            codexStatusMessage = "Connected"
+                                        }
+                                        updateModelAvailability()
+                                    } catch {
+                                        codexStatusMessage = error.localizedDescription
+                                    }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(codexAuth.isAuthorizing)
+                        }
+                    }
+
+                    if let prompt = codexAuth.deviceCodePrompt {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("1. Visit: \(prompt.verificationURL)")
+                            Text("2. Enter code: \(prompt.userCode)")
+                                .font(.system(.body, design: .monospaced))
+                                .bold()
+                            Text("Waiting for authorization...")
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                    }
+
+                    HStack(spacing: 8) {
+                        Image(systemName: codexAuth.isConnected ? "checkmark.circle.fill" : "terminal.fill")
+                            .foregroundStyle(codexAuth.isConnected ? .green : .secondary)
+                        Text(codexStatusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 SecureField("Tavily API Key (tvly-…)", text: $tavilyApiKey)
@@ -245,6 +346,20 @@ struct SettingsView: View {
         geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
         openaiApiKey = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
         tavilyApiKey = KeychainHelper.retrieve(key: "tavily_api_key") ?? ""
+        codexModelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+
+        Task {
+            await codexAuth.refreshConnectionStatus()
+            await MainActor.run {
+                if codexAuth.isConnected, let email = codexAuth.connectedEmail {
+                    codexStatusMessage = "Connected as \(email)"
+                } else if codexAuth.isConnected {
+                    codexStatusMessage = "Connected"
+                } else {
+                    codexStatusMessage = "Not connected"
+                }
+            }
+        }
 
         imessageListenerEnabled = UserDefaults.standard.bool(forKey: "imessage_listener_enabled")
         imessageSenderWhitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
@@ -374,6 +489,16 @@ struct SettingsView: View {
                     } else {
                         modelAvailabilityMessage = "OpenAI via API key is ready."
                         isModelReady = true
+                    }
+                }
+            case .codex:
+                await MainActor.run {
+                    if codexAuth.isConnected {
+                        modelAvailabilityMessage = "Codex via ChatGPT subscription is ready."
+                        isModelReady = true
+                    } else {
+                        modelAvailabilityMessage = "Sign in with ChatGPT or import from Codex CLI."
+                        isModelReady = false
                     }
                 }
             }
