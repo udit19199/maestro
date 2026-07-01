@@ -43,9 +43,9 @@ struct CodexCredentials: Sendable {
 final class CodexAuthManager: ObservableObject {
     static let shared = CodexAuthManager()
 
-    static let oauthClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
-    static let oauthIssuer = "https://auth.openai.com"
-    static let tokenURL = "https://auth.openai.com/oauth/token"
+    static let oauthClientID = CodexAuthSupport.oauthClientID
+    static let oauthIssuer = CodexAuthSupport.oauthIssuer
+    static let tokenURL = CodexAuthSupport.tokenURL
     static let defaultCallbackPort: UInt16 = 1455
     static let fallbackCallbackPort: UInt16 = 1457
 
@@ -76,16 +76,19 @@ final class CodexAuthManager: ObservableObject {
         do {
             _ = try await getValidCredentials()
             isConnected = true
-            connectedEmail = Self.emailFromStoredTokens()
+            connectedEmail = emailFromStoredTokens()
         } catch {
             isConnected = KeychainHelper.retrieve(key: "codex_refresh_token") != nil
-            connectedEmail = Self.emailFromStoredTokens()
+            connectedEmail = emailFromStoredTokens()
         }
     }
 
     /// Import credentials from an existing Codex CLI login at ~/.codex/auth.json.
     func importFromCLI() throws {
-        let authPath = Self.cliAuthPath()
+        let authPath = CodexAuthSupport.cliAuthPath()
+        guard CodexAuthSupport.isSafeCLIAuthPath(authPath) else {
+            throw CodexAuthError.importFailed("Refusing to import Codex auth from an unexpected path.")
+        }
         guard FileManager.default.fileExists(atPath: authPath.path) else {
             throw CodexAuthError.importFailed(
                 "No Codex CLI auth file found at \(authPath.path). Run `codex login` in Terminal first, or use Sign in with ChatGPT."
@@ -93,23 +96,10 @@ final class CodexAuthManager: ObservableObject {
         }
 
         let data = try Data(contentsOf: authPath)
-        guard let doc = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw CodexAuthError.importFailed("Invalid auth.json format.")
-        }
-
-        guard let authMode = doc["auth_mode"] as? String, authMode == "chatgpt" else {
-            throw CodexAuthError.importFailed(
-                "Expected auth_mode 'chatgpt' in auth.json. If you signed in with an API key, use the OpenAI API key backend instead."
-            )
-        }
-
-        guard let tokens = doc["tokens"] as? [String: Any] else {
-            throw CodexAuthError.importFailed("No tokens object in auth.json.")
-        }
-
+        let tokens = try CodexAuthSupport.parseChatGPTAuthDocument(data)
         try persistTokens(from: tokens)
         isConnected = true
-        connectedEmail = Self.emailFromStoredTokens()
+        connectedEmail = emailFromStoredTokens()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
@@ -138,7 +128,7 @@ final class CodexAuthManager: ObservableObject {
 
         try await exchangeAuthorizationCode(code: code, redirectURI: redirectURI, codeVerifier: codeVerifier)
         isConnected = true
-        connectedEmail = Self.emailFromStoredTokens()
+        connectedEmail = emailFromStoredTokens()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
@@ -170,11 +160,12 @@ final class CodexAuthManager: ObservableObject {
         )
 
         isConnected = true
-        connectedEmail = Self.emailFromStoredTokens()
+        connectedEmail = emailFromStoredTokens()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
-    func disconnect() {
+    func disconnect() async {
+        await revokeStoredTokens()
         KeychainHelper.delete(key: "codex_access_token")
         KeychainHelper.delete(key: "codex_refresh_token")
         KeychainHelper.delete(key: "codex_id_token")
@@ -191,7 +182,7 @@ final class CodexAuthManager: ObservableObject {
            let expiryString = KeychainHelper.retrieve(key: "codex_token_expiry"),
            let expiry = Double(expiryString),
            Date().timeIntervalSince1970 < expiry - 30 {
-            let accountID = KeychainHelper.retrieve(key: "codex_account_id") ?? Self.extractAccountID(
+            let accountID = KeychainHelper.retrieve(key: "codex_account_id") ?? CodexAuthSupport.extractAccountID(
                 idToken: KeychainHelper.retrieve(key: "codex_id_token"),
                 accessToken: accessToken
             )
@@ -206,17 +197,22 @@ final class CodexAuthManager: ObservableObject {
 
     /// Redacts token-like substrings before surfacing upstream errors in the UI.
     static func sanitizedErrorDetail(_ detail: String) -> String {
-        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "Unknown error" }
-        let redacted = trimmed.replacingOccurrences(
-            of: #"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"#,
-            with: "[redacted-token]",
-            options: .regularExpression
+        CodexAuthSupport.sanitizedErrorDetail(detail)
+    }
+
+    private func revokeStoredTokens() async {
+        let body = CodexAuthSupport.revokeRequestBody(
+            refreshToken: KeychainHelper.retrieve(key: "codex_refresh_token"),
+            accessToken: KeychainHelper.retrieve(key: "codex_access_token")
         )
-        if redacted.count <= 280 {
-            return redacted
-        }
-        return String(redacted.prefix(280)) + "…"
+        guard let body, let url = URL(string: CodexAuthSupport.revokeURL) else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     private func refreshStoredCredentials() async throws -> CodexCredentials {
@@ -241,7 +237,7 @@ final class CodexAuthManager: ObservableObject {
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw CodexAuthError.tokenRefreshFailed(Self.sanitizedErrorDetail(detail))
+            throw CodexAuthError.tokenRefreshFailed(CodexAuthSupport.sanitizedErrorDetail(detail))
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -255,7 +251,7 @@ final class CodexAuthManager: ObservableObject {
         try persistTokens(from: tokens)
 
         let accessToken = json["access_token"] as? String ?? ""
-        let accountID = Self.extractAccountID(
+        let accountID = CodexAuthSupport.extractAccountID(
             idToken: json["id_token"] as? String,
             accessToken: accessToken
         )
@@ -292,7 +288,7 @@ final class CodexAuthManager: ObservableObject {
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw CodexAuthError.authorizationFailed(Self.sanitizedErrorDetail(detail))
+            throw CodexAuthError.authorizationFailed(CodexAuthSupport.sanitizedErrorDetail(detail))
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -317,7 +313,7 @@ final class CodexAuthManager: ObservableObject {
             KeychainHelper.save(key: "codex_id_token", value: idToken)
         }
 
-        let accountID = Self.extractAccountID(
+        let accountID = CodexAuthSupport.extractAccountID(
             idToken: tokens["id_token"] as? String,
             accessToken: accessToken
         )
@@ -325,7 +321,7 @@ final class CodexAuthManager: ObservableObject {
             KeychainHelper.save(key: "codex_account_id", value: accountID)
         }
 
-        if let expiry = Self.jwtExpiry(accessToken) {
+        if let expiry = CodexAuthSupport.jwtExpiry(accessToken) {
             KeychainHelper.save(key: "codex_token_expiry", value: String(expiry))
         }
     }
@@ -411,17 +407,6 @@ final class CodexAuthManager: ObservableObject {
         throw CodexAuthError.authorizationFailed("Device code authentication timed out after 15 minutes.")
     }
 
-    private static func cliAuthPath() -> URL {
-        let codexHome: String
-        if let env = ProcessInfo.processInfo.environment["CODEX_HOME"], !env.isEmpty {
-            codexHome = env
-        } else {
-            codexHome = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".codex").path
-        }
-        return URL(fileURLWithPath: codexHome).appendingPathComponent("auth.json")
-    }
-
     private static func buildAuthorizeURL(redirectURI: String, codeChallenge: String, state: String) -> URL {
         var components = URLComponents(string: "\(oauthIssuer)/oauth/authorize")!
         components.queryItems = [
@@ -487,66 +472,11 @@ final class CodexAuthManager: ObservableObject {
         return bindResult == 0
     }
 
-    static func extractAccountID(idToken: String?, accessToken: String?) -> String {
-        for token in [idToken, accessToken].compactMap({ $0 }).filter({ !$0.isEmpty }) {
-            guard let claims = jwtClaims(token) else { continue }
-
-            if let accountID = claims["chatgpt_account_id"] as? String, !accountID.isEmpty {
-                return accountID
-            }
-
-            if let auth = claims["https://api.openai.com/auth"] as? [String: Any],
-               let accountID = auth["chatgpt_account_id"] as? String, !accountID.isEmpty {
-                return accountID
-            }
-
-            if let orgs = claims["organizations"] as? [[String: Any]],
-               let firstID = orgs.first?["id"] as? String, !firstID.isEmpty {
-                return firstID
-            }
-        }
-        return ""
-    }
-
     private static func emailFromStoredTokens() -> String? {
-        if let idToken = KeychainHelper.retrieve(key: "codex_id_token"),
-           let claims = jwtClaims(idToken) {
-            if let email = claims["email"] as? String, !email.isEmpty { return email }
-        }
-        if let accessToken = KeychainHelper.retrieve(key: "codex_access_token"),
-           let claims = jwtClaims(accessToken) {
-            if let email = claims["email"] as? String, !email.isEmpty { return email }
-        }
-        return nil
-    }
-
-    private static func jwtExpiry(_ token: String) -> TimeInterval? {
-        guard let claims = jwtClaims(token) else { return nil }
-        if let exp = claims["exp"] as? Double { return exp }
-        if let exp = claims["exp"] as? Int { return TimeInterval(exp) }
-        if let exp = claims["exp"] as? TimeInterval { return exp }
-        return nil
-    }
-
-    private static func isLoopbackAddress(_ addr: sockaddr_in) -> Bool {
-        addr.sin_addr.s_addr == inet_addr("127.0.0.1")
-    }
-
-    private static func jwtClaims(_ token: String) -> [String: Any]? {
-        let parts = token.split(separator: ".")
-        guard parts.count >= 2 else { return nil }
-
-        var payload = String(parts[1])
-        let remainder = payload.count % 4
-        if remainder != 0 {
-            payload += String(repeating: "=", count: 4 - remainder)
-        }
-
-        guard let data = Data(base64Encoded: payload.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return json
+        CodexAuthSupport.emailFromJWTClaims(
+            idToken: KeychainHelper.retrieve(key: "codex_id_token"),
+            accessToken: KeychainHelper.retrieve(key: "codex_access_token")
+        )
     }
 }
 
@@ -628,7 +558,7 @@ final class CodexOAuthCallbackServer {
         }
         defer { close(clientSocket) }
 
-        guard Self.isLoopbackAddress(clientAddr) else {
+        guard isLoopbackAddress(clientAddr) else {
             sendHTTPResponse(clientSocket, status: 403, body: "Forbidden")
             throw CodexAuthError.authorizationFailed("OAuth callback must originate from localhost.")
         }
@@ -648,8 +578,9 @@ final class CodexOAuthCallbackServer {
         }
 
         let parts = requestLine.split(separator: " ")
-        guard parts.count >= 2 else {
-            throw CodexAuthError.authorizationFailed("Malformed OAuth callback request.")
+        guard parts.count >= 2, parts[0].uppercased() == "GET" else {
+            sendHTTPResponse(clientSocket, status: 405, body: "Method Not Allowed")
+            throw CodexAuthError.authorizationFailed("OAuth callback must use GET.")
         }
 
         let path = String(parts[1])
@@ -699,5 +630,9 @@ final class CodexOAuthCallbackServer {
         \(body)
         """
         _ = response.withCString { write(socket, $0, strlen($0)) }
+    }
+
+    private func isLoopbackAddress(_ addr: sockaddr_in) -> Bool {
+        addr.sin_addr.s_addr == inet_addr("127.0.0.1")
     }
 }

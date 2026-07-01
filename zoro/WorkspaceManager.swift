@@ -184,7 +184,9 @@ class WorkspaceManager: ObservableObject {
                     userInfo: [NSLocalizedDescriptionKey: "Codex is not connected. Sign in with your ChatGPT account in Settings."]
                 )
             }
-            let modelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+            let modelName = CodexAuthSupport.normalizedModelName(
+                UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+            )
             return LanguageModelSession(
                 model: CodexLanguageModel(modelName: modelName),
                 tools: tools,

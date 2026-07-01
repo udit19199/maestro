@@ -264,9 +264,11 @@ struct ContentView: View {
                             HStack(spacing: 12) {
                                 if codexAuth.isConnected {
                                     Button("Disconnect Codex") {
-                                        codexAuth.disconnect()
-                                        codexStatusMessage = "Disconnected"
-                                        updateModelAvailability()
+                                        Task {
+                                            await codexAuth.disconnect()
+                                            codexStatusMessage = "Disconnected"
+                                            updateModelAvailability()
+                                        }
                                     }
                                     .buttonStyle(.bordered)
                                 } else {
@@ -1051,7 +1053,9 @@ struct ContentView: View {
             case .gemini:
                 tempSession = LanguageModelSession(model: GeminiLanguageModel(modelName: "gemini-2.5-flash", apiKey: geminiApiKey))
             case .codex:
-                let modelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+                let modelName = CodexAuthSupport.normalizedModelName(
+                    UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+                )
                 tempSession = LanguageModelSession(model: CodexLanguageModel(modelName: modelName))
             }
             
