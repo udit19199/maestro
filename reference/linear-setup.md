@@ -652,11 +652,39 @@ Quick reference when filing bugs or linking PRs:
 
 ## Linear Setup Steps
 
-### Step 1: Authenticate Linear in Cursor
+### Step 1: Authenticate Linear
 
-Linear MCP must be connected in **Cursor Desktop → Settings → MCP → Linear**. Until authenticated, create issues manually in the Linear web UI using the templates above.
+**Option A — Linear MCP (recommended for Cursor agents):**
 
-### Step 2: Create project scaffolding
+Linear MCP must be connected in **Cursor Desktop → Settings → MCP → Linear**. Once authenticated, ask a Cursor agent to create issues via MCP tools.
+
+**Option B — Personal API key (recommended for bootstrap script):**
+
+1. Open [Linear → Settings → Account → Security & access](https://linear.app/settings/account/security)
+2. Create a **Personal API key**
+3. Run the bootstrap script:
+
+```bash
+LINEAR_API_KEY=lin_api_... node scripts/linear-bootstrap.mjs
+```
+
+Optional: set `LINEAR_TEAM_ID` to target a specific team (defaults to first team).
+
+Dry run (no API calls):
+
+```bash
+node scripts/linear-bootstrap.mjs --dry-run
+```
+
+The script reads [`scripts/linear-issues.json`](../scripts/linear-issues.json) and creates:
+- Project **Zoro**
+- 17 labels
+- 5 project milestones
+- 88 issues (81 shipped as Done + 7 backlog + 5 learning)
+
+Progress is saved to `scripts/.linear-bootstrap-state.json` (safe to re-run).
+
+### Step 2: Create project scaffolding (automated by script)
 
 1. Create project **Zoro**
 2. Create all labels from [Labels](#labels) section

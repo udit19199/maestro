@@ -1,12 +1,1 @@
-.coreai-models/
-.DS_Store
-*.aimodel
-*.aimodelc
-build/
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
-xcuserdata/
-*.xcworkspace/xcuserdata/
-DerivedData/
+scripts/.linear-bootstrap-state.json

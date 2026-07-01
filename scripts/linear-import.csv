@@ -1,0 +1,530 @@
+Title,Description,Priority,Status,Labels
+Chat UI with streaming responses,"[ZORO-001] v0 — Shipped
+
+Message bubbles for user/assistant; assistant streams tokens in real time via `streamResponse(to:)`.
+
+**Code:** `zoro/ContentView.swift`",Low,Done,"area:core,status:shipped"
+Workspace folder selection,"[ZORO-002] v0 — Shipped
+
+User picks a workspace directory via `NSOpenPanel`; all file tools scoped to this path.
+
+**Code:** `ContentView.swift`, `WorkspaceManager.swift`",Low,Done,"area:core,status:shipped"
+Settings panel,"[ZORO-003] v0 — Shipped
+
+Gear icon toggles settings drawer: model config, API keys, Gmail, iMessage.
+
+**Code:** `ContentView.swift`",Low,Done,"area:core,status:shipped"
+Session reset on config change,"[ZORO-004] v0 — Shipped
+
+Changing workspace, model, or integration config invalidates LLM sessions.
+
+**Code:** `WorkspaceManager.resetSession()`, `invalidateSessionsForConfigChange()`",Low,Done,"area:core,status:shipped"
+Conversation context compression,"[ZORO-005] v0 — Shipped
+
+When context limit exceeded, conversation is summarized and session restarted.
+
+**Code:** `WorkspaceManager.swift`",Low,Done,"area:core,status:shipped"
+Execution Plan UI,"[ZORO-006] v0 — Shipped
+
+Agent `todo` tool updates visible checklist with pending/in_progress/completed states.
+
+**Code:** `TodoTool.swift`, `ContentView.swift`",Low,Done,"area:core,status:shipped"
+Research Progress UI,"[ZORO-007] v0 — Shipped
+
+Web search and note-creation steps shown with in-progress/completed/failed states.
+
+**Code:** `TavilySearchTool.swift`, `AppleNotesTool.swift`, `ContentView.swift`",Low,Done,"area:core,status:shipped"
+Clarify tool (local only),"[ZORO-008] v0 — Shipped
+
+Agent can suspend and ask user a question mid-task; UI shows question and waits for reply.
+
+**Code:** `ClarifyTool.swift`",Low,Done,"area:core,status:shipped"
+Keychain secret storage,"[ZORO-009] v0 — Shipped
+
+Anthropic, Gemini, Tavily, Gmail OAuth, iMessage passcode stored in macOS Keychain.
+
+**Code:** `KeychainHelper.swift`",Low,Done,"area:core,status:shipped"
+Model availability diagnostics,"[ZORO-010] v0 — Shipped
+
+Settings panel shows ready/warning state with actionable tips per backend.
+
+**Code:** `ContentView.updateModelAvailability()`",Low,Done,"area:core,status:shipped"
+On-Device Apple Intelligence,"[ZORO-011] v0 — Shipped
+
+Default backend via `SystemLanguageModel.default`; requires Apple Intelligence enabled.
+
+**Code:** `WorkspaceManager.makeSession()`",Low,Done,"area:llm,status:shipped"
+Private Cloud Compute,"[ZORO-012] v0 — Shipped
+
+Optional backend; requires `com.apple.developer.private-cloud-compute` entitlement.
+
+**Code:** `WorkspaceManager.swift`",Low,Done,"area:llm,status:shipped"
+Claude Sonnet 4.6,"[ZORO-013] v0 — Shipped
+
+Anthropic API via `ClaudeForFoundationModels` SPM; API key in settings.
+
+**Code:** `ClaudeForFoundationModels`, `ContentView.swift`",Low,Done,"area:llm,status:shipped"
+Gemini 2.5 Flash,"[ZORO-014] v0 — Shipped
+
+Custom `GeminiLanguageModel` adapter; API key sent via `x-goog-api-key` header.
+
+**Code:** `GeminiLanguageModel.swift`",Low,Done,"area:llm,status:shipped"
+Model type persistence,"[ZORO-015] v0 — Shipped
+
+Selected model saved to `UserDefaults` key `selected_model_type`.
+
+**Code:** `ContentView.swift`",Low,Done,"area:llm,status:shipped"
+Separate local and iMessage sessions,"[ZORO-016] v0 — Shipped
+
+`getOrCreateSession(context:)` creates isolated sessions with different tools/instructions.
+
+**Code:** `WorkspaceManager.swift`",Low,Done,"area:llm,status:shipped"
+`list_directory` tool,"[ZORO-020] v0 — Shipped
+
+List files/folders at relative path with type and size.
+
+**Code:** `FileTools.swift`",Low,Done,"area:files,status:shipped"
+`read_file` tool,"[ZORO-021] v0 — Shipped
+
+Read UTF-8 text files up to 2 MB.
+
+**Code:** `FileTools.swift`",Low,Done,"area:files,status:shipped"
+`write_file` tool,"[ZORO-022] v0 — Shipped
+
+Create or overwrite files in workspace.
+
+**Code:** `FileTools.swift`",Low,Done,"area:files,status:shipped"
+`patch` tool,"[ZORO-023] v0 — Shipped
+
+Find/replace unique contiguous block; preferred for code edits.
+
+**Code:** `PatchTool.swift`",Low,Done,"area:files,status:shipped"
+`search_files` tool,"[ZORO-024] v0 — Shipped
+
+ripgrep search with Swift file enumerator fallback.
+
+**Code:** `SearchFilesTool.swift`",Low,Done,"area:files,status:shipped"
+Workspace path scoping,"[ZORO-025] v0 — Shipped
+
+Reject absolute paths, `~`, and directory traversal outside workspace root.
+
+**Code:** `SecurityPolicy.resolveWorkspacePath()`",Low,Done,"area:files,status:shipped"
+`run_terminal_command` (foreground),"[ZORO-030] v0 — Shipped
+
+Execute zsh command in workspace; 120s timeout, 512 KB output cap.
+
+**Code:** `CommandLineTool.swift`, `WorkspaceManager.runCommand()`",Low,Done,"area:terminal,status:shipped"
+`run_terminal_command` (background),"[ZORO-031] v0 — Shipped
+
+`runInBackground: true` returns task ID immediately; process tracked in `activeProcesses`.
+
+**Code:** `CommandLineTool.swift`, `WorkspaceManager.runCommandBackground()`",Low,Done,"area:terminal,status:shipped"
+`get_process_status` tool,"[ZORO-032] v0 — Shipped
+
+Monitor background task logs, exit status, and output.
+
+**Code:** `ProcessStatusTool.swift`",Low,Done,"area:terminal,status:shipped"
+Process pruning,"[ZORO-033] v0 — Shipped
+
+Terminated background processes cleaned up on session reset.
+
+**Code:** `WorkspaceManager.pruneTerminatedProcesses()`",Low,Done,"area:terminal,status:shipped"
+Create calendar event (`create_event`),"[ZORO-040] v0 — Shipped
+
+Title, start/end ISO8601 dates, optional location/notes.
+
+**Code:** `EventKitTool.swift`",Low,Done,"area:calendar,status:shipped"
+List calendar events (`list_events`),"[ZORO-041] v0 — Shipped
+
+Query events in date range.
+
+**Code:** `EventKitTool.swift`",Low,Done,"area:calendar,status:shipped"
+Delete calendar event (`delete_event`),"[ZORO-042] v0 — Shipped
+
+Delete by event ID (blocked in iMessage remote).
+
+**Code:** `EventKitTool.swift`",Low,Done,"area:calendar,status:shipped"
+Create reminder (`create_reminder`),"[ZORO-043] v0 — Shipped
+
+Title, optional due date, optional notes.
+
+**Code:** `EventKitTool.swift`",Low,Done,"area:calendar,status:shipped"
+List reminders (`list_reminders`),"[ZORO-044] v0 — Shipped
+
+List incomplete reminders.
+
+**Code:** `EventKitTool.swift`",Low,Done,"area:calendar,status:shipped"
+Complete reminder (`complete_reminder`),"[ZORO-045] v0 — Shipped
+
+Mark reminder done by ID.
+
+**Code:** `EventKitTool.swift`",Low,Done,"area:calendar,status:shipped"
+Create note (`create_note`),"[ZORO-050] v0 — Shipped
+
+Markdown body converted to HTML; synced via Notes.app.
+
+**Code:** `AppleNotesTool.swift`",Low,Done,"area:notes,status:shipped"
+List notes (`list_notes`),"[ZORO-051] v0 — Shipped
+
+Returns note IDs and titles.
+
+**Code:** `AppleNotesTool.swift`",Low,Done,"area:notes,status:shipped"
+Search notes (`search_notes`),"[ZORO-052] v0 — Shipped
+
+Search by query string.
+
+**Code:** `AppleNotesTool.swift`",Low,Done,"area:notes,status:shipped"
+Read note (`read_note`),"[ZORO-053] v0 — Shipped
+
+Read full note body by ID.
+
+**Code:** `AppleNotesTool.swift`",Low,Done,"area:notes,status:shipped"
+Append to note (`append_note`),"[ZORO-054] v0 — Shipped
+
+Append content to existing note.
+
+**Code:** `AppleNotesTool.swift`",Low,Done,"area:notes,status:shipped"
+Basic web search (Tavily),"[ZORO-060] v0 — Shipped
+
+`searchDepth: basic` — quick results with synthesized answer.
+
+**Code:** `TavilySearchTool.swift`",Low,Done,"area:core,status:shipped"
+Advanced deep research (Tavily),"[ZORO-061] v0 — Shipped
+
+`searchDepth: advanced` — deeper research runs.
+
+**Code:** `TavilySearchTool.swift`",Low,Done,"area:core,status:shipped"
+Configurable Tavily result count,"[ZORO-062] v0 — Shipped
+
+`maxResults` parameter (default 5).
+
+**Code:** `TavilySearchTool.swift`",Low,Done,"area:core,status:shipped"
+Research step tracking,"[ZORO-063] v0 — Shipped
+
+Each search adds a Research Progress UI step.
+
+**Code:** `TavilySearchTool.swift`, `ContentView.swift`",Low,Done,"area:core,status:shipped"
+Gmail OAuth 2.0 desktop flow,"[ZORO-070] v0 — Shipped
+
+Client ID/secret in settings; browser auth; callback on `http://127.0.0.1:8765/`.
+
+**Code:** `GmailAuthManager.swift`",Low,Done,"area:gmail,status:shipped"
+Gmail token storage in Keychain,"[ZORO-071] v0 — Shipped
+
+Access/refresh tokens persisted securely.
+
+**Code:** `GmailAuthManager.swift`, `KeychainHelper.swift`",Low,Done,"area:gmail,status:shipped"
+Connect/Disconnect Gmail UI,"[ZORO-072] v0 — Shipped
+
+Settings panel buttons; status message.
+
+**Code:** `ContentView.swift`",Low,Done,"area:gmail,status:shipped"
+Gmail header badge,"[ZORO-073] v0 — Shipped
+
+Shows connected email, unread count, last sync, manual refresh.
+
+**Code:** `ContentView.swift`, `GmailManager.swift`",Low,Done,"area:gmail,status:shipped"
+Gmail inbox preview panel,"[ZORO-074] v0 — Shipped
+
+Latest inbox messages when connected.
+
+**Code:** `ContentView.swift`",Low,Done,"area:gmail,status:shipped"
+Gmail activity log,"[ZORO-075] v0 — Shipped
+
+In-progress/completed/failed fetch steps during agent runs.
+
+**Code:** `GmailManager.logActivity()`",Low,Done,"area:gmail,status:shipped"
+Gmail auto-refresh,"[ZORO-076] v0 — Shipped
+
+Snapshot refresh every 5 minutes when connected.
+
+**Code:** `GmailManager.startAutoRefreshIfNeeded()`",Low,Done,"area:gmail,status:shipped"
+Gmail status (`get_status`),"[ZORO-080] v0 — Shipped
+
+Account email, unread inbox count, totals.",Low,Done,"area:gmail,status:shipped"
+Gmail list messages (`list_messages`),"[ZORO-081] v0 — Shipped
+
+Metadata + snippets only; `fetchAll` up to 250.",Low,Done,"area:gmail,status:shipped"
+Gmail search messages (`search_messages`),"[ZORO-082] v0 — Shipped
+
+Gmail query syntax; index only.",Low,Done,"area:gmail,status:shipped"
+Gmail read single message (`read_message`),"[ZORO-083] v0 — Shipped
+
+Full body with `body_complete` flag.",Low,Done,"area:gmail,status:shipped"
+Gmail read message batch (`read_messages`),"[ZORO-084] v0 — Shipped
+
+Up to 20 messages per batch.",Low,Done,"area:gmail,status:shipped"
+Gmail read thread (`read_thread`),"[ZORO-085] v0 — Shipped
+
+All messages in thread with full bodies.",Low,Done,"area:gmail,status:shipped"
+Gmail read attachment (`read_attachment`),"[ZORO-086] v0 — Shipped
+
+Text, JSON, XML, CSV, PDF (via PDFKit).",Low,Done,"area:gmail,status:shipped"
+Gmail mark as read (`mark_read`),"[ZORO-090] v0 — Shipped
+
+Remove UNREAD label.",Low,Done,"area:gmail,status:shipped"
+Gmail archive message (`archive_message`),"[ZORO-091] v0 — Shipped
+
+Remove from INBOX.",Low,Done,"area:gmail,status:shipped"
+Gmail star message (`star_message`),"[ZORO-092] v0 — Shipped
+
+Add STARRED label.",Low,Done,"area:gmail,status:shipped"
+Gmail unstar message (`unstar_message`),"[ZORO-093] v0 — Shipped
+
+Remove STARRED label.",Low,Done,"area:gmail,status:shipped"
+Gmail modify labels (`modify_labels`),"[ZORO-094] v0 — Shipped
+
+Add/remove custom labels.",Low,Done,"area:gmail,status:shipped"
+Gmail list labels (`list_labels`),"[ZORO-095] v0 — Shipped
+
+All Gmail labels.",Low,Done,"area:gmail,status:shipped"
+Gmail create draft (`create_draft`),"[ZORO-096] v0 — Shipped
+
+Draft with to/subject/body.",Low,Done,"area:gmail,status:shipped"
+Gmail reply to thread (`reply_to_thread`),"[ZORO-097] v0 — Shipped
+
+Threaded reply with In-Reply-To headers.",Low,Done,"area:gmail,status:shipped"
+Gmail send email (`send_email`),"[ZORO-098] v0 — Shipped
+
+Send new email.",Low,Done,"area:gmail,status:shipped"
+Gmail trash message (`trash_message`),"[ZORO-099] v0 — Shipped
+
+Move to trash.",Low,Done,"area:gmail,status:shipped"
+Gmail fetch reports,"[ZORO-100] v0 — Shipped
+
+Every response includes `=== GMAIL FETCH REPORT ===` with `fetch_complete`, counts, warnings.
+
+**Code:** `GmailService.swift`",Low,Done,"area:gmail,status:shipped"
+Gmail index vs read separation,"[ZORO-101] v0 — Shipped
+
+Search/list marked INDEX ONLY; agent must call read_* before summarizing.",Low,Done,"area:gmail,status:shipped"
+GmailReadAuditor,"[ZORO-102] v0 — Shipped
+
+Blocks assistant responses that summarize without full read in same turn.
+
+**Code:** `GmailReadAuditor.swift`",Low,Done,"area:gmail,status:shipped"
+Gmail session read tracking,"[ZORO-103] v0 — Shipped
+
+Tracks message IDs fully read; appended to tool responses.
+
+**Code:** `GmailManager.sessionReadFooter()`",Low,Done,"area:gmail,status:shipped"
+Dynamic Gmail instructions,"[ZORO-104] v0 — Shipped
+
+When connected, mandatory Gmail rules injected into session instructions.
+
+**Code:** `GmailManager.contextualInstructions()`",Low,Done,"area:gmail,status:shipped"
+iMessage Gmail restrictions,"[ZORO-105] v0 — Shipped
+
+Remote sessions: read/search only; send/trash/draft/reply blocked.
+
+**Code:** `SecurityPolicy.isGmailActionPermitted()`",Low,Done,"area:gmail,status:shipped"
+Outbound iMessage (`send_imessage`),"[ZORO-110] v0 — Shipped
+
+Via Messages.app AppleScript; imessage/sms/auto service.
+
+**Code:** `IMessageTool.swift`",Low,Done,"area:imessage,status:shipped"
+Inbound iMessage command listener,"[ZORO-111] v0 — Shipped
+
+Watches `~/Library/Messages/chat.db` with GCD file watcher + 10s fallback poll.
+
+**Code:** `IMessageListener.swift`",Low,Done,"area:imessage,status:shipped"
+Remote command parsing,"[ZORO-112] v0 — Shipped
+
+Commands prefixed `zoro:` with passcode validation.
+
+**Code:** `IMessageListener.processIncomingMessage()`",Low,Done,"area:imessage,status:shipped"
+iMessage sender whitelist,"[ZORO-113] v0 — Shipped
+
+Comma-separated phone/email whitelist in settings.
+
+**Code:** `ContentView.swift`, `SecurityPolicy.isSenderWhitelisted()`",Low,Done,"area:imessage,status:shipped"
+iMessage passcode requirement,"[ZORO-114] v0 — Shipped
+
+Passcode in Keychain; listener disabled without it.
+
+**Code:** `ContentView.swift`, `KeychainHelper.swift`",Low,Done,"area:imessage,status:shipped"
+iMessage rate limiting,"[ZORO-115] v0 — Shipped
+
+5 commands per minute per sender.
+
+**Code:** `IMessageListener.isRateLimited()`",Low,Done,"area:imessage,status:shipped"
+iMessage incoming-only filter,"[ZORO-116] v0 — Shipped
+
+Only processes `is_from_me = 0` to prevent self-trigger loops.
+
+**Code:** `IMessageListener.swift`",Low,Done,"area:imessage,status:shipped"
+iMessage attachment injection,"[ZORO-117] v0 — Shipped
+
+Text attachments from Messages folder appended to remote prompt.
+
+**Code:** `IMessageListener.processIncomingMessage()`",Low,Done,"area:imessage,status:shipped"
+iMessage reply truncation,"[ZORO-118] v0 — Shipped
+
+Replies capped at 4,000 characters.
+
+**Code:** `IMessageListener.truncateReply()`",Low,Done,"area:imessage,status:shipped"
+Full Disk Access diagnostic,"[ZORO-119] v0 — Shipped
+
+UI warning when FDA not granted for chat.db access.
+
+**Code:** `ContentView.swift`",Low,Done,"area:imessage,status:shipped"
+Restricted remote tool set,"[ZORO-120] v0 — Shipped
+
+Separate session with reduced tools and stricter action rules.
+
+**Code:** `WorkspaceManager.iMessageTools`, `SecurityPolicy.swift`",Low,Done,"area:imessage,status:shipped"
+Gmail auditor on remote iMessage,"[ZORO-121] v0 — Shipped
+
+GmailReadAuditor applied to iMessage agent replies too.
+
+**Code:** `IMessageListener.runZoroAgent()`",Low,Done,"area:imessage,status:shipped"
+Centralized security limits,"[ZORO-130] v0 — Shipped
+
+All resource caps in one enum.
+
+**Code:** `SecurityPolicy.swift`",Low,Done,"area:security,status:shipped"
+Tool permission by context,"[ZORO-131] v0 — Shipped
+
+Local vs iMessage tool/action gating.
+
+**Code:** `SecurityPolicy.isToolPermitted()` etc.",Low,Done,"area:security,status:shipped"
+AppleScript escaping,"[ZORO-132] v0 — Shipped
+
+User/LLM content escaped before AppleScript injection.
+
+**Code:** `SecurityPolicy.escapeForAppleScript()`",Low,Done,"area:security,status:shipped"
+HTML escaping for Notes,"[ZORO-133] v0 — Shipped
+
+Content escaped before Notes HTML injection.
+
+**Code:** `SecurityPolicy.escapeHTML()`",Low,Done,"area:security,status:shipped"
+iMessage attachment path scoping,"[ZORO-134] v0 — Shipped
+
+Attachments only from `~/Library/Messages/Attachments`.
+
+**Code:** `SecurityPolicy.resolveIMessageAttachmentPath()`",Low,Done,"area:security,status:shipped"
+Contact normalization,"[ZORO-135] v0 — Shipped
+
+Phone/email normalized for whitelist comparison.
+
+**Code:** `SecurityPolicy.normalizeContact()`",Low,Done,"area:security,status:shipped"
+Output truncation helper,"[ZORO-136] v0 — Shipped
+
+Consistent truncation with suffix for oversized outputs.
+
+**Code:** `SecurityPolicy.truncateOutput()`",Low,Done,"area:security,status:shipped"
+`todo` tool,"[ZORO-140] v0 — Shipped
+
+Agent internal task list with merge support.
+
+**Code:** `TodoTool.swift`",Low,Done,"area:core,status:shipped"
+`current_time` tool,"[ZORO-141] v0 — Shipped
+
+Returns system date, time, timezone.
+
+**Code:** `CurrentTimeTool.swift`",Low,Done,"area:core,status:shipped"
+Agent operation rules,"[ZORO-142] v0 — Shipped
+
+System instructions: Gmail first-class, prefer Notes for research, update todos.
+
+**Code:** `WorkspaceManager.localInstructions`",Low,Done,"area:core,status:shipped"
+Untrusted data rule,"[ZORO-143] v0 — Shipped
+
+Agent instructed to treat file/web/email content as untrusted.
+
+**Code:** `WorkspaceManager.localInstructions`",Low,Done,"area:core,status:shipped"
+Gmail parsing unit tests,"[ZORO-150] v0 — Shipped
+
+Base64 decode, HTML strip, message ID extraction, summary detection.
+
+**Code:** `zoroTests/GmailParsingTests.swift`",Low,Done,"area:testing,status:shipped"
+Gmail image attachment OCR,"[ZORO-200] v1 — Gmail Hardening
+
+## Summary
+Add OCR support for image attachments in `read_attachment`.
+
+## Problem
+Today `read_attachment` supports text MIME types and PDF only.
+
+## Acceptance criteria
+- [ ] `SecurityPolicy.isGmailReadableAttachment()` recognizes common image MIME types
+- [ ] `GmailService.readAttachment()` extracts text from images via Vision/OCR
+- [ ] Fetch report indicates OCR completeness
+- [ ] Unit tests for MIME detection and OCR path
+- [ ] Documented in `reference/gmail-setup.md`
+
+## Code references
+- `GmailService.swift`, `SecurityPolicy.swift`, `GmailTool.swift`",High,Backlog,"area:gmail,type:feature"
+Gmail OAuth macOS verification,"[ZORO-201] v1 — Gmail Hardening
+
+## Summary
+End-to-end verification of Gmail OAuth on macOS.
+
+## Acceptance criteria
+- [ ] Fresh Connect Gmail flow succeeds
+- [ ] Token refresh works after access token expiry
+- [ ] Disconnect clears tokens and UI state
+- [ ] Agent can get_status, list, search, read, and send
+
+## Code references
+- `GmailAuthManager.swift`, `reference/gmail-setup.md`",High,Backlog,"area:gmail,type:verification"
+Expand Gmail test coverage,"[ZORO-202] v1 — Gmail Hardening
+
+## Summary
+Add unit tests beyond parsing — fetch report formatting, auditor logic, action permission matrix.
+
+## Acceptance criteria
+- [ ] Tests for `GmailReadAuditor.auditAssistantResponse()` edge cases
+- [ ] Tests for `SecurityPolicy.isGmailActionPermitted()` local vs iMessage
+- [ ] Tests for fetch report `fetch_complete` flag logic
+- [ ] All tests pass via ⌘U in Xcode",Medium,Backlog,"area:gmail,area:testing,type:feature"
+Gmail Pub/Sub push notifications,"[ZORO-210] v2 — Real-Time Sync
+
+## Summary
+Replace polling-only inbox sync with Gmail Pub/Sub push notifications.
+
+## Acceptance criteria
+- [ ] Design doc for Pub/Sub topic, subscription, and HTTPS webhook endpoint
+- [ ] New mail triggers snapshot refresh without manual action
+- [ ] Graceful fallback to periodic refresh if push unavailable
+- [ ] Document setup requirements (public HTTPS endpoint)",Medium,Backlog,"area:gmail,type:feature"
+Remove or register dead `replace_file_content` tool,"[ZORO-220] v3 — Quality & DX
+
+## Summary
+`ReplaceFileContentTool` exists in `FileTools.swift` but is not registered in `WorkspaceManager.localTools`. It duplicates `patch`.
+
+## Acceptance criteria
+- [ ] Either register `replace_file_content` in local tools, OR remove `ReplaceFileContentTool`",Low,Backlog,"area:files,type:chore"
+Expand test coverage beyond Gmail,"[ZORO-221] v3 — Quality & DX
+
+## Summary
+Add tests for SecurityPolicy path validation, contact normalization, and tool permission matrix.
+
+## Acceptance criteria
+- [ ] `SecurityPolicy.resolveWorkspacePath()` tests
+- [ ] `SecurityPolicy.normalizeContact()` tests
+- [ ] Tool permission tests for local vs iMessage contexts",Medium,Backlog,"area:testing,type:feature"
+Calendar update/edit action,"[ZORO-222] v3 — Quality & DX
+
+## Summary
+Add `update_event` action to modify existing calendar events.
+
+## Acceptance criteria
+- [ ] New `update_event` action in `EventKitTool`
+- [ ] Documented in agent instructions
+- [ ] Permission rules defined for iMessage remote",Low,Backlog,"area:calendar,type:feature"
+Lesson 2: Architecture & request lifecycle,"[ZORO-300] Learning
+
+Complete teaching lesson from `lessons/0002-architecture-and-lifecycle.html`. Track in NOTES.md.",Low,Backlog,"area:docs,type:docs"
+Lesson 3: State management & background commands,"[ZORO-301] Learning
+
+Teaching lesson on WorkspaceManager and background command runner.",Low,Backlog,"area:docs,type:docs"
+Lesson 4: Tool protocol & AppleScript/EventKit bridges,"[ZORO-302] Learning
+
+Teaching lesson on Tool protocol and integration bridges.",Low,Backlog,"area:docs,type:docs"
+Lesson 5: Creating and registering a new tool,"[ZORO-303] Learning
+
+Interactive coding lesson for adding a new tool.",Low,Backlog,"area:docs,type:docs"
+Lesson 6: Gmail integration (verify/checkbox),"[ZORO-304] Learning
+
+HTML lesson exists; verify and check off in NOTES.md.",Low,Backlog,"area:docs,type:docs"
