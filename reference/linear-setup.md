@@ -703,6 +703,8 @@ Create open issues ZORO-200 through ZORO-222 (and ZORO-300–304 if tracking lea
 
 ### Step 5: Ongoing workflow
 
+**Required:** Before any repo change (code, tests, docs, config), open or find a Linear issue and move it to In Progress. See [Development Workflow (Linear — Required)](../.agents/AGENTS.md#development-workflow-linear--required) in `.agents/AGENTS.md`.
+
 | Event | Action |
 |---|---|
 | New feature idea | Create `type:feature` issue with `area:*` label before coding |

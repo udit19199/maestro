@@ -11,6 +11,21 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 
 ---
 
+## Development Workflow (Linear — Required)
+
+**Before making any changes** to this repository — code, tests, docs, or configuration — you must have an open Linear issue in the [Zoro project](https://linear.app/udit19199/project/zoro-75b62c67c4d1).
+
+1. **Find or create an issue** — Search existing backlog items first. If nothing matches, create a new issue in the Zoro project with a clear title, acceptance criteria, and appropriate labels (`area:*`, `type:*`).
+2. **Start work** — Move the issue to **In Progress** before editing files.
+3. **Link your work** — Reference the Linear issue ID (e.g. `UDI-123`) in commit messages and pull request descriptions.
+4. **Finish** — Move the issue to **Done** when the change is merged or shipped.
+
+Do not begin implementation without a tracked Linear issue. Question-only or read-only exploration does not require an issue; any change that modifies the repo does.
+
+Feature inventory, labels, milestones, and catalog refs (`ZORO-XXX`): `reference/linear-setup.md` · Issue seed data: `scripts/linear-issues.json`
+
+---
+
 ## Architecture
 
 ### High-Level Structure
@@ -131,7 +146,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
-- **No Tests Yet**: There is a `zoroTests` unit test target with Gmail parsing tests. Run via ⌘U in Xcode.
+- **Tests**: The `zoroTests` unit test target includes Gmail parsing tests (`GmailParsingTests.swift`). Run via ⌘U in Xcode.
 
 ---
 
@@ -148,7 +163,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 
 - **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Zoro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `ClaudeForFoundationModels` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
 - A Swift-for-Linux toolchain (`swift` 6.x via `swiftly`) *can* be installed, but it cannot compile this app: `swiftc -typecheck` fails immediately with `no such module 'FoundationModels'` / `no such module 'SwiftUI'`. Do not waste time trying to make it build on Linux.
-- There is **no test target** (single application target, no `XCTest`), **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
+- There is a **`zoroTests`** unit test target (Gmail parsing tests only today), but **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
 - To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure a Claude or Gemini API key under the in-app Settings gear, which are stored in the macOS Keychain). Xcode auto-resolves the `ClaudeForFoundationModels` SPM dependency on first build (network required once).
 - Practical implication for cloud agents: scope work here to **code reading/editing and static reasoning**. Any verification that requires compiling or running the app must be done by the user on macOS.
 
@@ -236,5 +251,7 @@ Setup guide: `reference/gmail-setup.md`
 - `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests` for offline parsing coverage
 
 ### Issue tracking (Linear)
+- **Mandatory before changes** — see [Development Workflow (Linear — Required)](#development-workflow-linear--required) above.
 - Feature inventory and Linear setup guide: `reference/linear-setup.md`
+- Live project: [Zoro on Linear](https://linear.app/udit19199/project/zoro-75b62c67c4d1) (107 catalogued items: 95 shipped, 12 backlog)
 
