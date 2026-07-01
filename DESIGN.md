@@ -217,7 +217,7 @@ No glassmorphism, no neon glow, no stacked shadow cards.
 - **Sidebar:** NavigationSplitView, 240pt fixed width, + button for new chat (with agent picker sheet), conversation list grouped by date.
 - **Home (detail, no thread selected):** Briefing dashboard fills detail column; slim composer pinned to bottom.
 - **Chat (detail, thread selected):** Message thread + activity panel slot + full composer.
-- **Header (chat detail):** Agent name, model status dot, settings gear. No workspace folder gate.
+- **Header (chat detail):** Agent name, agent chip, source badge (iMessage), model status dot. Settings open via menu bar or ⌘, (native Settings scene). No workspace folder gate.
 - **Menu bar:** MenuBarExtra with bubble icon (not sparkles); menu items for Open briefing, New chat, Recent, Settings, Quit. Login item on by default; Dock hidden by default.
 
 ## Do's and Don'ts

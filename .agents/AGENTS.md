@@ -106,7 +106,7 @@ User input (BriefingHomeView / ChatView / IMessageListener)
 ### Error Handling
 - Tools return error messages as `String` values (e.g., `"Error: No workspace directory selected."`) rather than throwing. This keeps the LLM's tool loop stable.
 - Use `guard let ... else { return "Error: ..." }` for early validation of required fields.
-- Errors surfaced to the user in the chat include actionable tips (e.g., "Tip: Click the gear icon...").
+- Errors surfaced to the user in the chat include actionable tips (e.g., "Tip: Open Settings (⌘,) and configure a model backend...").
 
 ### Concurrency
 - Use Swift's structured concurrency (`async/await`, `Task { }`) for all asynchronous work.
