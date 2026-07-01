@@ -61,10 +61,34 @@ public struct CodexExecutor: LanguageModelExecutor {
         model: CodexLanguageModel,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
-        let credentials = try await CodexAuthManager.shared.getValidCredentials()
+        var credentials = try await CodexAuthManager.shared.getValidCredentials()
+        var retriedAfterUnauthorized = false
 
-        let responseEntryID = UUID().uuidString
-        let toolCallsEntryID = UUID().uuidString
+        while true {
+            do {
+                try await streamResponse(
+                    request: request,
+                    credentials: credentials,
+                    responseEntryID: UUID().uuidString,
+                    toolCallsEntryID: UUID().uuidString,
+                    streamingInto: channel
+                )
+                return
+            } catch let error as NSError where error.domain == "CodexExecutor" && error.code == 401 && !retriedAfterUnauthorized {
+                retriedAfterUnauthorized = true
+                credentials = try await CodexAuthManager.shared.getValidCredentials(forceRefresh: true)
+            }
+        }
+    }
+
+    @MainActor
+    private func streamResponse(
+        request: LanguageModelExecutorGenerationRequest,
+        credentials: CodexCredentials,
+        responseEntryID: String,
+        toolCallsEntryID: String,
+        streamingInto channel: LanguageModelExecutorGenerationChannel
+    ) async throws {
 
         var instructions: String?
         var inputItems: [CodexJSONValue] = []
@@ -175,6 +199,14 @@ public struct CodexExecutor: LanguageModelExecutor {
             throw NSError(domain: "CodexExecutor", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid HTTP response"])
         }
 
+        if httpResponse.statusCode == 401 {
+            throw NSError(
+                domain: "CodexExecutor",
+                code: 401,
+                userInfo: [NSLocalizedDescriptionKey: "Codex session expired. Try signing in again in Settings."]
+            )
+        }
+
         if httpResponse.statusCode != 200 {
             var errorBody = ""
             for try await byte in bytes {
@@ -185,7 +217,7 @@ public struct CodexExecutor: LanguageModelExecutor {
             throw NSError(
                 domain: "CodexExecutor",
                 code: httpResponse.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "Codex HTTP error \(httpResponse.statusCode): \(errorBody)"]
+                userInfo: [NSLocalizedDescriptionKey: "Codex HTTP error \(httpResponse.statusCode): \(CodexAuthManager.sanitizedErrorDetail(errorBody))"]
             )
         }
 
@@ -245,6 +277,13 @@ public struct CodexExecutor: LanguageModelExecutor {
                                 )
                             ))
                         }
+
+                    case "response.failed", "response.incomplete", "error":
+                        throw NSError(
+                            domain: "CodexExecutor",
+                            code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "Codex generation failed: \(CodexAuthManager.sanitizedErrorDetail(jsonString))"]
+                        )
 
                     default:
                         break

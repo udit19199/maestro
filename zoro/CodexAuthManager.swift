@@ -179,13 +179,15 @@ final class CodexAuthManager: ObservableObject {
         KeychainHelper.delete(key: "codex_refresh_token")
         KeychainHelper.delete(key: "codex_id_token")
         KeychainHelper.delete(key: "codex_account_id")
+        KeychainHelper.delete(key: "codex_token_expiry")
         isConnected = false
         connectedEmail = nil
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
-    func getValidCredentials() async throws -> CodexCredentials {
-        if let accessToken = KeychainHelper.retrieve(key: "codex_access_token"),
+    func getValidCredentials(forceRefresh: Bool = false) async throws -> CodexCredentials {
+        if !forceRefresh,
+           let accessToken = KeychainHelper.retrieve(key: "codex_access_token"),
            let expiryString = KeychainHelper.retrieve(key: "codex_token_expiry"),
            let expiry = Double(expiryString),
            Date().timeIntervalSince1970 < expiry - 30 {
@@ -199,6 +201,25 @@ final class CodexAuthManager: ObservableObject {
             return CodexCredentials(accessToken: accessToken, accountID: accountID)
         }
 
+        return try await refreshStoredCredentials()
+    }
+
+    /// Redacts token-like substrings before surfacing upstream errors in the UI.
+    static func sanitizedErrorDetail(_ detail: String) -> String {
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Unknown error" }
+        let redacted = trimmed.replacingOccurrences(
+            of: #"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"#,
+            with: "[redacted-token]",
+            options: .regularExpression
+        )
+        if redacted.count <= 280 {
+            return redacted
+        }
+        return String(redacted.prefix(280)) + "…"
+    }
+
+    private func refreshStoredCredentials() async throws -> CodexCredentials {
         guard let refreshToken = KeychainHelper.retrieve(key: "codex_refresh_token"),
               !refreshToken.isEmpty else {
             throw CodexAuthError.notConnected
@@ -220,7 +241,7 @@ final class CodexAuthManager: ObservableObject {
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw CodexAuthError.tokenRefreshFailed(detail)
+            throw CodexAuthError.tokenRefreshFailed(Self.sanitizedErrorDetail(detail))
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -271,7 +292,7 @@ final class CodexAuthManager: ObservableObject {
 
         guard httpResponse.statusCode == 200 else {
             let detail = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-            throw CodexAuthError.authorizationFailed(detail)
+            throw CodexAuthError.authorizationFailed(Self.sanitizedErrorDetail(detail))
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -507,6 +528,10 @@ final class CodexAuthManager: ObservableObject {
         return nil
     }
 
+    private static func isLoopbackAddress(_ addr: sockaddr_in) -> Bool {
+        addr.sin_addr.s_addr == inet_addr("127.0.0.1")
+    }
+
     private static func jwtClaims(_ token: String) -> [String: Any]? {
         let parts = token.split(separator: ".")
         guard parts.count >= 2 else { return nil }
@@ -584,6 +609,9 @@ final class CodexOAuthCallbackServer {
             throw CodexAuthError.authorizationFailed("Could not listen on port \(port).")
         }
 
+        var acceptTimeout = timeval(tv_sec: 300, tv_usec: 0)
+        setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, &acceptTimeout, socklen_t(MemoryLayout<timeval>.size))
+
         DispatchQueue.main.async {
             NSWorkspace.shared.open(authURL)
         }
@@ -596,9 +624,14 @@ final class CodexOAuthCallbackServer {
             }
         }
         guard clientSocket >= 0 else {
-            throw CodexAuthError.authorizationFailed("OAuth callback timed out.")
+            throw CodexAuthError.authorizationFailed("OAuth callback timed out after 5 minutes.")
         }
         defer { close(clientSocket) }
+
+        guard Self.isLoopbackAddress(clientAddr) else {
+            sendHTTPResponse(clientSocket, status: 403, body: "Forbidden")
+            throw CodexAuthError.authorizationFailed("OAuth callback must originate from localhost.")
+        }
 
         var requestData = Data()
         var buffer = [UInt8](repeating: 0, count: 4096)

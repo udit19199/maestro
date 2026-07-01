@@ -244,7 +244,7 @@ struct ContentView: View {
 
                     if workspace.selectedModelType == .codex {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Uses your ChatGPT / Codex subscription via the same backend as the Codex CLI.")
+                            Text("Uses your ChatGPT / Codex subscription. Auth follows OpenAI's documented Codex login flows; model calls use the same Codex backend as the CLI (not the public api.openai.com API).")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
 
