@@ -16,37 +16,28 @@ struct IMessageTool: Tool {
     struct Arguments {
         @Guide(description: "The recipient's phone number (with country code, e.g. '+14155551212') or Apple ID email.")
         var recipient: String
-
+        
         @Guide(description: "The text content of the message to send.")
         var text: String
-
+        
         @Guide(description: "Optional. Service to use: 'imessage', 'sms', or 'auto' (default).")
         var service: String?
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
-            return permissionError
+        let stepId: UUID?
+        if await !WorkspaceManager.shared.isIMessageContext {
+            stepId = await WorkspaceManager.shared.addResearchStep("Sending iMessage to \(arguments.recipient)")
+        } else {
+            stepId = nil
         }
-
-        let context = await workspace.currentExecutionContext
-        guard SecurityPolicy.isIMessageRecipientPermitted(arguments.recipient, context: context) else {
-            switch context {
-            case .local:
-                return "Error: Recipient is not permitted."
-            case .iMessage(let requester):
-                return "Error: iMessage remote sessions may only reply to the requester (\(requester))."
-            }
-        }
-
-        let stepId = await workspace.addResearchStep("Sending iMessage to \(arguments.recipient)")
-
-        let escapedText = SecurityPolicy.escapeForAppleScript(arguments.text)
-        let escapedRecipient = SecurityPolicy.escapeForAppleScript(arguments.recipient)
-
+        
+        let escapedText = escapeForAppleScript(arguments.text)
+        let escapedRecipient = escapeForAppleScript(arguments.recipient)
+        
         let serviceType = arguments.service?.lowercased() ?? "auto"
-        let script: String
+        var script = ""
+        
         if serviceType == "imessage" {
             script = """
             tell application "Messages"
@@ -64,6 +55,7 @@ struct IMessageTool: Tool {
             end tell
             """
         } else {
+            // Auto-detect service or let Messages.app decide
             script = """
             tell application "Messages"
                 set targetBuddy to buddy "\(escapedRecipient)"
@@ -71,17 +63,21 @@ struct IMessageTool: Tool {
             end tell
             """
         }
-
+        
         do {
             _ = try await runAppleScript(script)
-            await workspace.completeResearchStep(id: stepId)
+            if let stepId {
+                await WorkspaceManager.shared.completeResearchStep(id: stepId)
+            }
             return "Message successfully sent to \(arguments.recipient)."
         } catch {
-            await workspace.failResearchStep(id: stepId)
+            if let stepId {
+                await WorkspaceManager.shared.failResearchStep(id: stepId)
+            }
             return "Error sending iMessage: \(error.localizedDescription)"
         }
     }
-
+    
     private func runAppleScript(_ script: String) async throws -> String {
         let process = Process()
         let pipe = Pipe()
@@ -89,17 +85,25 @@ struct IMessageTool: Tool {
         process.standardError = pipe
         process.arguments = ["-e", script]
         process.launchPath = "/usr/bin/osascript"
-
+        
         try process.run()
-
+        
         let data = try pipe.fileHandleForReading.readToEnd() ?? Data()
         process.waitUntilExit()
-
+        
         if process.terminationStatus != 0 {
-            let errStr = String(data: data, encoding: .utf8) ?? ""
+            let errData = try? pipe.fileHandleForReading.readToEnd()
+            let errStr = errData.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             throw NSError(domain: "AppleScriptError", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: errStr])
         }
-
+        
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func escapeForAppleScript(_ text: String) -> String {
+        var escaped = text
+        escaped = escaped.replacingOccurrences(of: "\\", with: "\\\\")
+        escaped = escaped.replacingOccurrences(of: "\"", with: "\\\"")
+        return escaped
     }
 }
