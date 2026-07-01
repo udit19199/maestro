@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, Anthropic Claude (via `ClaudeForFoundationModels`), and Google Gemini. The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, interact with Apple Notes, and access Gmail — all scoped to a user-selected workspace directory (file/shell tools) or connected accounts (Gmail, Notes, Calendar).
+Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, Anthropic Claude (via `ClaudeForFoundationModels`), Google Gemini, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar). Gmail backend code exists but agent access is **not wired yet** (see Gmail section).
 
 - **Platform**: macOS 27.0+
 - **Language**: Swift 5 (uses modern Swift concurrency: `async/await`, `Task`, `CheckedContinuation`)
@@ -18,9 +18,9 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 - **Briefing-first home:** Dashboard with yesterday recap and today suggestions; slim composer at bottom. Not chat-first.
 - **Menu bar primary:** Dock hidden by default (Settings toggle); login item on by default. Background briefing refresh while the app runs.
 - **Four agents, one per thread:** Default (router, Apple Intelligence), Research, Planner, Teach. Pick at chat creation or Default suggests handoff. No mid-chat switching in v1.
-- **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review/undo in Settings Memory panel.
+- **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review, edit, and delete in Settings Memory panel (undo list not implemented).
 - **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription), Claude, Gemini.
-- **iMessage:** Each inbound text → new conversation. Prefixes `research:`, `plan:`, `teach:` route agents. Thread continuation deferred Phase 2.
+- **iMessage:** Each inbound `zoro:` command → new conversation. Format: `zoro: [passcode ]research:|plan:|teach: <command>` (passcode optional). Thread continuation deferred Phase 2.
 - **See also:** `PRODUCT.md`, `DESIGN.md`
 
 ### High-Level Structure
@@ -185,7 +185,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - Open `zoro.xcodeproj` in Xcode.
 - Select the `zoro` scheme and a macOS destination.
 - Build and run (`⌘R`).
-- On first launch, select a workspace folder and configure a model backend in the settings panel.
+- On first launch, configure a **model backend** in Settings (⌘,). Attach a workspace folder in Settings → Workspace **only if** you need file or terminal tools; briefing and chat work without one.
 
 ---
 
@@ -209,17 +209,18 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 ### Security Controls
 1. **Full Disk Access:** Accessing `chat.db` requires Full Disk Access enabled in macOS System Settings for the parent target (Xcode/Zoro). If not granted, the app surfaces a clear diagnostic warning.
 2. **Strict Sender Whitelist:** Incoming messages are compared against a comma-separated list of whitelisted phone numbers/emails stored in `UserDefaults`. Unlisted senders are silently ignored. Contacts are normalized before comparison.
-3. **Required Passcode:** Remote iMessage commands require a passcode stored in the Keychain. The listener cannot be enabled without both a passcode and at least one whitelisted sender.
-4. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
-5. **Per-Sender Rate Limiting:** Remote execution is capped at 5 commands per minute per sender.
-6. **Restricted Remote Tool Set:** iMessage sessions use a separate LLM session with a reduced tool set. Shell commands, file writes, patches, process inspection, and clarifying questions are blocked remotely.
-7. **Workspace Path Validation:** All file tools resolve paths with `SecurityPolicy.resolveWorkspacePath()` and reject absolute paths or traversal outside the workspace root.
-8. **Attachment Scoping:** iMessage attachments are only read from `~/Library/Messages/Attachments`.
-9. **Outbound iMessage Restrictions:** Remote sessions may only reply to the requester who sent the command.
-10. **AppleScript + HTML Escaping:** User/LLM content injected into AppleScript or Notes HTML passes through `SecurityPolicy.escapeForAppleScript()` / `SecurityPolicy.escapeHTML()`.
-11. **Resource Limits:** File reads, shell output, shell timeouts, and iMessage reply length are capped in `SecurityPolicy.swift`.
-12. **Keychain Hardening:** Secrets use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
-13. **Gemini API Key Transport:** Gemini requests send the API key via the `x-goog-api-key` header, not the URL query string.
+3. **Optional Passcode:** Remote commands may require a passcode stored in the Keychain. If configured, the passcode must appear immediately after `zoro:` and before agent prefixes. The listener can be enabled with whitelist only (passcode labeled optional in Settings).
+4. **Command Prefix:** Messages must start with `zoro:` (case-insensitive). Agent routing prefixes (`research:`, `plan:`, `teach:`) come after the optional passcode.
+5. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
+6. **Global Rate Limiting:** Remote execution is capped at 5 commands per minute **app-wide** (not per sender).
+7. **Runtime Tool Restrictions:** iMessage sessions use the same `AgentRunner` tool registration as local chat, but disallowed tools fail at call time via `SecurityPolicy.isToolPermitted()` (e.g. shell, file writes, patches). `ClarifyTool` refuses to suspend on iMessage.
+8. **Workspace Path Validation:** All file tools resolve paths with `SecurityPolicy.resolveWorkspacePath()` and reject absolute paths or traversal outside the workspace root.
+9. **Attachment Scoping:** iMessage attachments are only read from `~/Library/Messages/Attachments`.
+10. **Outbound iMessage Restrictions:** Remote sessions may only reply to the requester who sent the command.
+11. **AppleScript + HTML Escaping:** User/LLM content injected into AppleScript or Notes HTML passes through `SecurityPolicy.escapeForAppleScript()` / `SecurityPolicy.escapeHTML()`.
+12. **Resource Limits:** File reads, shell output, shell timeouts, and iMessage reply length are capped in `SecurityPolicy.swift`.
+13. **Keychain Hardening:** Secrets use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+14. **Gemini API Key Transport:** Gemini requests send the API key via the `x-goog-api-key` header, not the URL query string.
 
 ### Code Constraints
 - **Zero-Dependency Policy:** Do not install or require external communication CLIs (like `imsg`), Node, or Python bridges. All parsing (including binary plist/attributedBody decoding) must be done natively in Swift.

@@ -144,7 +144,7 @@
     <p>Swift uses both structs and classes to group data and behavior. However, they manage memory differently:</p>
     <ul>
         <li>
-            <strong>Structs</strong> are copied when passed around. They are lightweight and ideal for data containers. In Zoro, all tools and chat messages are structs (e.g., <code>struct ChatMessage</code>).
+            <strong>Structs</strong> are copied when passed around. They are lightweight and ideal for data containers. In Zoro, all tools and chat messages are structs (e.g., <code>struct StoredMessage</code>).
         </li>
         <li>
             <strong>Classes</strong> are shared references. Multiple parts of your app can point to and edit the same class instance. Zoro's <code>WorkspaceManager</code> is a class because we want the exact same state holder shared across the UI and all tool executions.
@@ -156,7 +156,7 @@
     <p>To do this, SwiftUI uses <strong>property wrappers</strong> (variables starting with <code>@</code>):</p>
     <ul>
         <li><code>@Published</code>: Tells SwiftUI to watch this variable. When it changes, tell the views.</li>
-        <li><code>@StateObject</code>: Creates and keeps a shared manager class (like <code>WorkspaceManager</code>) alive inside a View.</li>
+        <li><code>@ObservedObject</code>: Observes a shared singleton (like <code>WorkspaceManager.shared</code>) so the view redraws when its <code>@Published</code> properties change.</li>
     </ul>
     <div class="highlight-box">
         <p><strong>The Zoro Connection:</strong> In views like <code>ChatView.swift</code> and <code>SettingsView.swift</code>, the UI holds <code>@ObservedObject private var workspace = WorkspaceManager.shared</code>. Inside <code>WorkspaceManager</code>, the list of tasks is <code>@Published var activeTodos: [TodoItem] = []</code>. Because of this, the moment an LLM adds a task to the todo list in the background, the UI instantly redraws to display it!</p>

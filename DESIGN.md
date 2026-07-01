@@ -187,38 +187,38 @@ No glassmorphism, no neon glow, no stacked shadow cards.
 
 ### Buttons
 - **Shape:** System bordered / borderedProminent styles; 8pt corner radius on custom fills.
-- **Primary:** Bordered prominent, system accent tint. Send, confirm calendar events, confirm shell commands.
-- **Secondary:** Bordered or plain. Cancel, attach folder, sidebar actions, dismiss memory notice.
+- **Primary:** Bordered prominent, system accent tint. Send, confirm calendar events.
+- **Secondary:** Bordered or plain. Cancel, sidebar actions, dismiss memory notice, refresh briefing.
 - **Hover / Focus:** System default. No custom scale or bounce animations.
 
 ### Chips (agent picker)
 - **Style:** 8pt radius capsules on `controlBackgroundColor`; selected state uses accent fill with white label.
-- **Agents:** Default, Research, Planner, Teach. Selected at chat creation only; no mid-thread switch in v1.
+- **Agents:** General, Research, Planner, Teach (UI labels from `AgentType.displayName`). Selected at chat creation only; no mid-thread switch in v1.
 - **State:** Unselected = secondary text; selected = accent background.
 
 ### Briefing cards
 - **Style:** Full-width rows or grouped sections on `textBackgroundColor`; 12pt internal padding; 1pt subtle border or divider between items.
 - **Sections:** Yesterday recap, Today (calendar + reminders), Suggestions (from profile + recent chats).
-- **Refresh:** Subtle "Updated" timestamp or pull-to-refresh on manual open; background refresh while menu bar app runs.
-- **Actions:** Tap a suggestion to open or prefill composer; tap a calendar item to open Planner thread.
+- **Refresh:** "Updated" timestamp plus **Refresh briefing** button; background refresh while menu bar app runs.
+- **Actions (future):** Tap a suggestion to open or prefill composer; tap a calendar item to open Planner thread. Today suggestions are plain text rows.
 
 ### Cards / Containers
 - **Message bubbles:** User right-aligned, accent fill, 12pt radius, max width 600pt. Assistant left-aligned with small avatar, 12pt radius, control background, 1pt subtle border.
-- **Activity panel:** Collapsible section above composer in chat view; same control background; status dots (gray pending, blue in progress, green complete, red failed).
-- **Memory notice:** Inline banner in chat after silent memory write: "Memory updated" with link to Settings Memory panel.
+- **Execution / research panels:** When active, chat shows **Execution Plan** (todo steps) and **Research Progress** (research steps) above the composer. No unified process-status panel yet.
+- **Memory notice:** Inline banner in chat after silent memory write: "Memory updated" with Review link to Settings Memory panel.
 - **Sidebar rows:** Plain list selection highlight; agent badge and source badge (desktop / iMessage) as small labels.
 
 ### Inputs / Fields
 - **Composer (home):** Slim single-line or 2-line field at bottom of briefing dashboard. Placeholder: "Ask a follow-up..."
 - **Composer (chat):** Multi-line TextEditor in rounded container (16pt radius), 2-8 lines auto-grow. Placeholder: "Ask anything, search the web, check your calendar..."
-- **Settings:** Native Form in Settings scene; SecureField for API keys with rounded border style; Memory panel with editable profile and undo list.
+- **Settings:** Native Form in Settings scene (General + Memory tabs); SecureField for API keys; Memory panel with editable profile facts and freeform notes (no undo list yet). Workspace folder attach lives under General → Workspace.
 
 ### Navigation
 - **Sidebar:** NavigationSplitView, 240pt fixed width, + button for new chat (with agent picker sheet), conversation list grouped by date.
 - **Home (detail, no thread selected):** Briefing dashboard fills detail column; slim composer pinned to bottom.
-- **Chat (detail, thread selected):** Message thread + activity panel slot + full composer.
+- **Chat (detail, thread selected):** Message thread + optional Execution Plan / Research Progress panels + full composer.
 - **Header (chat detail):** Agent name, agent chip, source badge (iMessage), model status dot. Settings open via menu bar or ⌘, (native Settings scene). No workspace folder gate.
-- **Menu bar:** MenuBarExtra with bubble icon (not sparkles); menu items for Open briefing, New chat, Recent, Settings, Quit. Login item on by default; Dock hidden by default.
+- **Menu bar:** MenuBarExtra with bubble icon; menu items: **Open Zoro**, New Chat, Settings, Quit. Login item on by default; Dock hidden by default.
 
 ## Do's and Don'ts
 

@@ -135,7 +135,7 @@
         <div class="card">
             <div class="card-title">Structs (Value Types)</div>
             <p style="font-size:0.9rem; margin:0;">Copied when passed around. Perfect for simple data models and immutable tools. 
-            <br><em>Examples:</em> <code>ChatMessage</code>, <code>TodoItem</code>, and all <code>Tool</code> implementations.</p>
+            <br><em>Examples:</em> <code>StoredMessage</code>, <code>TodoItem</code>, and all <code>Tool</code> implementations.</p>
         </div>
         <div class="card">
             <div class="card-title">Classes (Reference Types)</div>
@@ -171,7 +171,8 @@ WorkspaceManager.shared.runCommand("ls")</code></pre>
     <p>Property wrappers add special behavior to variables, usually starting with an <code>@</code> symbol:</p>
     <ul>
         <li><code>@Published</code>: Inside a class, this tells SwiftUI to monitor this variable. If it changes, any view watching this class will automatically redraw.</li>
-        <li><code>@StateObject</code>: Creates and manages a reference-type state class inside a view, keeping it alive during view redraws.</li>
+        <li><code>@ObservedObject</code>: Observes a shared reference-type object (often a <code>.shared</code> singleton) so the view redraws when its <code>@Published</code> properties change.</li>
+        <li><code>@StateObject</code>: Creates and owns a reference-type object inside a view (use when the view creates the object, not for Zoro's singletons).</li>
         <li><code>@State</code>: Manages simple, local state (like whether a settings window is open) within a single view.</li>
     </ul>
 
@@ -180,7 +181,7 @@ WorkspaceManager.shared.runCommand("ls")</code></pre>
         <p style="font-size:0.95rem; margin:0; font-style:italic;">
         In views like <code>ChatView.swift</code> and <code>SettingsView.swift</code>, you will see:<br>
         <code>@ObservedObject private var workspace = WorkspaceManager.shared</code><br>
-        Because `workspace` is a `@StateObject` and its properties like `workspaceURL` or `activeTodos` are marked `@Published` in `WorkspaceManager`, the chat UI instantly refreshes the folder path or task checklists whenever they change in the background!
+        Because views use <code>@ObservedObject</code> with <code>WorkspaceManager.shared</code> and its properties like <code>workspaceURL</code> or <code>activeTodos</code> are marked <code>@Published</code>, the chat UI instantly refreshes the folder path or task checklists whenever they change in the background!
         </p>
     </div>
 

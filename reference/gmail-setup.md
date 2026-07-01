@@ -78,7 +78,7 @@ Remote `zoro:` commands can **read/search** Gmail but cannot **send** or **trash
 | Redirect URI mismatch | Ensure Google Console has exactly `http://127.0.0.1:8765/` |
 | "Access blocked" on consent screen | Add your Google account as a test user (Testing mode) |
 | Token refresh fails | Disconnect and reconnect Gmail; re-authorize with `prompt=consent` |
-| Agent summarizes from snippets | Response should be blocked by GmailReadAuditor — retry; ensure read_* was called |
+| Agent summarizes from snippets | Chat-level blocking is not wired yet — ensure the agent calls `read_*` before summarizing; auditor records reads inside `GmailTool` only |
 
 ## Hard read enforcement
 
