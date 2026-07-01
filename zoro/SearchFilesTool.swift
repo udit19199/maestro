@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct SearchFilesTool: Tool {
     let name = "search_files"
     let description = "Search the contents of text files in the workspace for a matching query string (like ripgrep)."

@@ -8,6 +8,7 @@
 import FoundationModels
 import Foundation
 
+@MainActor
 struct CommandLineTool: Tool {
     let name = "run_terminal_command"
     let description = "Execute a terminal command or script inside the project's workspace (e.g. running tests, building code, starting dev servers)."

@@ -9,6 +9,7 @@ import Foundation
 import FoundationModels
 
 // MARK: - ListDirectoryTool
+@MainActor
 struct ListDirectoryTool: Tool {
     let name = "list_directory"
     let description = "List files and folders in the workspace at the specified relative path."
@@ -30,7 +31,7 @@ struct ListDirectoryTool: Tool {
 
         switch SecurityPolicy.resolveWorkspacePath(arguments.path, relativeTo: workspaceURL) {
         case .failure(let error):
-            return error
+            return error.message
         case .success(let targetURL):
             let fileManager = FileManager.default
             do {
@@ -62,6 +63,7 @@ struct ListDirectoryTool: Tool {
 }
 
 // MARK: - ReadFileTool
+@MainActor
 struct ReadFileTool: Tool {
     let name = "read_file"
     let description = "Read the entire contents of a text file in the workspace."
@@ -83,7 +85,7 @@ struct ReadFileTool: Tool {
 
         switch SecurityPolicy.resolveWorkspacePath(arguments.path, relativeTo: workspaceURL) {
         case .failure(let error):
-            return error
+            return error.message
         case .success(let fileURL):
             do {
                 let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
@@ -105,6 +107,7 @@ struct ReadFileTool: Tool {
 }
 
 // MARK: - WriteFileTool
+@MainActor
 struct WriteFileTool: Tool {
     let name = "write_file"
     let description = "Create a new file or completely overwrite an existing file with the specified content."
@@ -129,7 +132,7 @@ struct WriteFileTool: Tool {
 
         switch SecurityPolicy.resolveWorkspacePath(arguments.path, relativeTo: workspaceURL) {
         case .failure(let error):
-            return error
+            return error.message
         case .success(let fileURL):
             let fileManager = FileManager.default
             let directoryURL = fileURL.deletingLastPathComponent()
@@ -145,6 +148,7 @@ struct WriteFileTool: Tool {
 }
 
 // MARK: - ReplaceFileContentTool
+@MainActor
 struct ReplaceFileContentTool: Tool {
     let name = "replace_file_content"
     let description = "Edit a single contiguous block of code/text in a file by replacing a target string with a new string."
@@ -172,7 +176,7 @@ struct ReplaceFileContentTool: Tool {
 
         switch SecurityPolicy.resolveWorkspacePath(arguments.path, relativeTo: workspaceURL) {
         case .failure(let error):
-            return error
+            return error.message
         case .success(let fileURL):
             do {
                 let data = try Data(contentsOf: fileURL)

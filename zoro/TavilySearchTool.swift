@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct TavilySearchTool: Tool {
     let name = "tavily_search"
     let description = "Search the web and perform deep research using the Tavily API. Returns a list of matching search results or a synthesized research answer."

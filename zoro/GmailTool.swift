@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct GmailTool: Tool {
     let name = "manage_gmail"
     let description = """

@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct CurrentTimeTool: Tool {
     let name = "current_time"
     let description = "Get the current system date, time, and timezone."

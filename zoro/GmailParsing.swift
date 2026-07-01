@@ -41,7 +41,7 @@ enum GmailParsing {
     static func extractMessageIds(from text: String) -> [String] {
         let patterns = [
             /id=([a-f0-9]+)/,
-            /message[_ ]?id[:\s]+([a-f0-9]+)/i,
+            /(?i)message[_ ]?id[:\s]+([a-f0-9]+)/,
             /\[([a-f0-9]{10,})\]/
         ]
         var ids = Set<String>()

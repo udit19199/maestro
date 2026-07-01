@@ -13,6 +13,16 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 
 ## Architecture
 
+### Product shape (grill-me decisions)
+
+- **Briefing-first home:** Dashboard with yesterday recap and today suggestions; slim composer at bottom. Not chat-first.
+- **Menu bar primary:** Dock hidden by default (Settings toggle); login item on by default. Background briefing refresh while the app runs.
+- **Four agents, one per thread:** Default (router, Apple Intelligence), Research, Planner, Teach. Pick at chat creation or Default suggests handoff. No mid-chat switching in v1.
+- **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review/undo in Settings Memory panel.
+- **Models:** Default → Apple Intelligence. Research/Planner/Teach → ChatGPT when OpenAI key exists; Apple until then. OpenAI backend build needed (repo has Claude/Gemini today).
+- **iMessage:** Each inbound text → new conversation. Prefixes `research:`, `plan:`, `teach:` route agents. Thread continuation deferred Phase 2.
+- **See also:** `PRODUCT.md`, `DESIGN.md`
+
 ### High-Level Structure
 
 ```
