@@ -28,11 +28,15 @@ Zoro starts a local callback server on port **8765** during Connect Gmail.
 
 ## 3. Connect in Zoro
 
-1. Open Zoro → click the **gear icon** (Settings).
-2. Scroll to **Gmail Integration**.
+> **Note:** Gmail backend code exists in the repo, but the Settings UI for OAuth connect/disconnect is **not yet wired**. The steps below describe the intended flow once Settings includes a Gmail Integration section.
+
+1. Open Zoro → open **Settings** (⌘, or menu bar → Settings…).
+2. Go to the **Gmail Integration** section (pending implementation in `SettingsView.swift`).
 3. Paste **Client ID** and **Client Secret** (saved to Keychain automatically).
 4. Click **Connect Gmail** — your browser opens for Google sign-in.
-5. After approval, return to Zoro. The header should show your email and unread count.
+5. After approval, return to Zoro. When wired, the app will show your email and unread count.
+
+Until the Settings UI ships, OAuth credentials can only be configured once the Gmail section is added to Settings.
 
 ## 4. Verify
 
@@ -50,7 +54,10 @@ Try these prompts:
 | `GmailService.swift` | Gmail REST API client, pagination, fetch reports |
 | `GmailManager.swift` | Inbox snapshot, activity log, agent context injection |
 | `GmailTool.swift` | `manage_gmail` tool exposed to the LLM |
+| `GmailReadAuditor.swift` | Tracks index vs full reads (response blocking not yet wired in chat) |
 | `SecurityPolicy.swift` | Gmail limits (page size, batch read, body bytes, retries) |
+
+**Wiring status:** `GmailTool` is not yet registered in `AgentRunner.tools(for:)`. Session instructions from `GmailManager.contextualInstructions()` are not yet injected in `AgentRunner.getOrCreateSession()`. Settings UI and header/inbox preview are pending.
 
 ## Anti-hallucination model
 
@@ -71,11 +78,11 @@ Remote `zoro:` commands can **read/search** Gmail but cannot **send** or **trash
 | Redirect URI mismatch | Ensure Google Console has exactly `http://127.0.0.1:8765/` |
 | "Access blocked" on consent screen | Add your Google account as a test user (Testing mode) |
 | Token refresh fails | Disconnect and reconnect Gmail; re-authorize with `prompt=consent` |
-| Agent summarizes from snippets | Response should be blocked by GmailReadAuditor — retry; ensure read_* was called |
+| Agent summarizes from snippets | Chat-level blocking is not wired yet — ensure the agent calls `read_*` before summarizing; auditor records reads inside `GmailTool` only |
 
 ## Hard read enforcement
 
-If Zoro tries to summarize email without calling `read_message`, `read_messages`, or `read_thread` first, the assistant response is **blocked** and replaced with a verification error listing the issue.
+When fully wired, Zoro will block assistant responses that summarize email without calling `read_message`, `read_messages`, or `read_thread` first. Today, `GmailReadAuditor` records reads inside `GmailTool` only; chat-level blocking in `ChatView` and `IMessageListener` is pending.
 
 ## Known limits
 

@@ -65,7 +65,7 @@ Four agents, one per thread:
 
 | Agent | Role | Default model |
 | --- | --- | --- |
-| **Default** | Router for general tasks, Apple Notes, and handoff suggestions | Apple Intelligence |
+| **General** (agent type `default`) | Router for general tasks, Apple Notes, and handoff suggestions | Apple Intelligence |
 | **Research** | Web and deep research (blocker workflows) | ChatGPT when OpenAI key exists; Apple Intelligence until then |
 | **Planner** | Calendar, week/day planning, memory writes for progress | ChatGPT when OpenAI key exists; Apple Intelligence until then |
 | **Teach** | Personal tutoring with curriculum state in dedicated threads (Matt Pocock teach methodology as foundation) | ChatGPT when OpenAI key exists; Apple Intelligence until then |
@@ -78,39 +78,39 @@ Hybrid system:
 - Editable profile file the user can review and edit directly
 - Conservative auto-extraction from conversations
 - Silent save with a "memory updated" notice in chat
-- Settings Memory panel for review and undo
+- Settings Memory panel for review, edit, and delete (undo not implemented)
 - Planner and Teach agents may write progress silently
 
 ## Models
 
-- **Default agent** → Apple Intelligence
-- **Research, Planner, Teach** → ChatGPT when OpenAI API keys are configured; Apple Intelligence as fallback until then
-- **Build needed:** OpenAI backend (repo currently has Claude/Gemini integrations)
+- **Default agent** → user-selected backend (Apple Intelligence by default). UI label: **General**.
+- **Research, Planner, Teach** → OpenAI when an OpenAI API key is configured; Apple Intelligence as fallback
+- **Available backends:** Apple Intelligence (on-device), Private Cloud Compute, OpenAI (`OpenAILanguageModel.swift`), Codex/ChatGPT subscription (`CodexLanguageModel.swift`), Claude (`ClaudeForFoundationModels` SPM), Gemini (`GeminiLanguageModel.swift`)
 
 ## Core Flows
 
 1. **Morning briefing** — Open app or menu bar; see yesterday recap and today suggestions sourced from calendar, reminders, profile, and recent Zoro chats. Background refresh while Zoro runs (menu bar keeps the process alive).
 2. **Ask and resume** — Type in the slim composer or open a thread from the sidebar; receive a streamed reply; quit and relaunch with history intact.
-3. **Search and research** — Route to Research agent. Web search via Tavily; deep research shows progress in an activity panel and can save results to Notes.
+3. **Search and research** — Route to Research agent. Web search via Tavily; research steps show in a **Research Progress** panel in chat and can save results to Notes.
 4. **Life admin** — Route to Planner agent. Propose calendar events in chat; user confirms; events added to Apple Calendar. Reminders and memory updates follow the same confirm pattern where applicable.
-5. **Apple Notes** — Default agent handles read and write via natural language.
+5. **Apple Notes** — General agent handles read and write via natural language.
 6. **Personal tutoring** — Route to Teach agent. Dedicated threads carry curriculum state across sessions.
-7. **Remote via iMessage (day-one blocker)** — Whitelisted sender texts a command; each inbound text starts a **new** conversation (thread continuation deferred to Phase 2). Default agent unless prefixed: `research:`, `plan:`, or `teach:`.
-8. **Optional file work** — User attaches a folder in the composer; file read/write, patch, and terminal tools scope to that folder. Shell requires confirmation for every command in v1.
-9. **Menu bar access** — Icon in the menu bar for briefing, new chat, open window, recent threads, and settings.
+7. **Remote via iMessage (day-one blocker)** — Whitelisted sender texts `zoro: [passcode ]<command>`; each inbound command starts a **new** conversation (thread continuation deferred to Phase 2). General agent unless prefixed: `research:`, `plan:`, or `teach:` (e.g. `zoro: research: summarize my inbox`).
+8. **Optional file work** — User attaches a folder in **Settings → Workspace**; file read/write, patch, and terminal tools scope to that folder. Shell commands run immediately (no per-command confirmation in v1).
+9. **Menu bar access** — Menu bar icon with Open Zoro, New Chat, Settings, and Quit.
 
 ## Briefing sources
 
 **v1:** Calendar, reminders, user profile, recent Zoro chats.
 
-**Phase 2:** Email via existing Gmail integration in the codebase.
+**Phase 2:** Email via Gmail integration (backend code exists; agent registration and Settings UI wiring pending).
 
 ## Deferred (Phase 2+)
 
 - ⌘K command palette (was day-one; now Phase 2)
 - Email in briefing
 - iMessage thread continuation (same conversation across texts)
-- Shell allowlist and auto-run without per-command confirmation
+- Shell allowlist and per-command confirmation before auto-run
 
 ## Accessibility & Inclusion
 

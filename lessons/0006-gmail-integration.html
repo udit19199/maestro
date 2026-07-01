@@ -155,19 +155,21 @@ warnings:
     </table>
 
     <h2>Agent Instructions Injection</h2>
-    <p>When Gmail is connected, <code>WorkspaceManager.makeSession()</code> appends live context from <code>GmailManager.contextualInstructions()</code>:</p>
+    <p>When Gmail is connected, <code>AgentRunner.getOrCreateSession()</code> should append live context from <code>GmailManager.contextualInstructions()</code> (this injection is designed but not yet wired):</p>
     <ul>
         <li>Connected email address and unread count</li>
         <li>Mandatory rules: never invent IDs, always read before summarizing, cite message IDs</li>
     </ul>
-    <p>Sessions are invalidated (<code>invalidateSessionsForConfigChange()</code>) when Gmail connects or disconnects so new instructions take effect.</p>
+    <p>Sessions are invalidated (<code>WorkspaceManager.invalidateSessionsForConfigChange()</code> → <code>AgentRunner.invalidateAllSessions()</code>) when Gmail connects or disconnects so new instructions take effect.</p>
 
-    <h2>UI: First-Class Visibility</h2>
+    <h2>UI: First-Class Visibility (designed, pending wiring)</h2>
     <ul>
-        <li><strong>Header badge</strong> — email, unread count, sync time, manual refresh</li>
-        <li><strong>Inbox preview panel</strong> — latest messages (ground truth you can eyeball)</li>
-        <li><strong>Gmail activity log</strong> — what the agent fetched during the current prompt</li>
+        <li><strong>Header badge</strong> — email, unread count, sync time, manual refresh (not yet in current views)</li>
+        <li><strong>Inbox preview panel</strong> — latest messages (not yet in current views)</li>
+        <li><strong>Gmail activity log</strong> — what the agent fetched during the current prompt (backend exists in <code>GmailManager</code>)</li>
+        <li><strong>Settings Gmail section</strong> — OAuth connect/disconnect (pending in <code>SettingsView.swift</code>)</li>
     </ul>
+    <p><strong>Tool registration:</strong> <code>GmailTool</code> (<code>manage_gmail</code>) is not yet registered in <code>AgentRunner.tools(for:)</code>, so agents cannot call Gmail until wiring is complete.</p>
 
     <h2>Swift Concepts Used</h2>
     <ul>
