@@ -83,7 +83,7 @@ Hybrid system:
 
 ## Models
 
-- **Default agent** → user-selected backend (Apple Intelligence by default)
+- **Default agent** → user-selected backend (Apple Intelligence by default). UI label: **General**.
 - **Research, Planner, Teach** → OpenAI when an OpenAI API key is configured; Apple Intelligence as fallback
 - **Available backends:** Apple Intelligence (on-device), Private Cloud Compute, OpenAI (`OpenAILanguageModel.swift`), Codex/ChatGPT subscription (`CodexLanguageModel.swift`), Claude (`ClaudeForFoundationModels` SPM), Gemini (`GeminiLanguageModel.swift`)
 
@@ -93,7 +93,7 @@ Hybrid system:
 2. **Ask and resume** — Type in the slim composer or open a thread from the sidebar; receive a streamed reply; quit and relaunch with history intact.
 3. **Search and research** — Route to Research agent. Web search via Tavily; research steps show in a **Research Progress** panel in chat and can save results to Notes.
 4. **Life admin** — Route to Planner agent. Propose calendar events in chat; user confirms; events added to Apple Calendar. Reminders and memory updates follow the same confirm pattern where applicable.
-5. **Apple Notes** — Default agent handles read and write via natural language.
+5. **Apple Notes** — General agent handles read and write via natural language.
 6. **Personal tutoring** — Route to Teach agent. Dedicated threads carry curriculum state across sessions.
 7. **Remote via iMessage (day-one blocker)** — Whitelisted sender texts `zoro: [passcode ]<command>`; each inbound command starts a **new** conversation (thread continuation deferred to Phase 2). General agent unless prefixed: `research:`, `plan:`, or `teach:` (e.g. `zoro: research: summarize my inbox`).
 8. **Optional file work** — User attaches a folder in **Settings → Workspace**; file read/write, patch, and terminal tools scope to that folder. Shell commands run immediately (no per-command confirmation in v1).

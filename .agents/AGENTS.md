@@ -17,7 +17,7 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 
 - **Briefing-first home:** Dashboard with yesterday recap and today suggestions; slim composer at bottom. Not chat-first.
 - **Menu bar primary:** Dock hidden by default (Settings toggle); login item on by default. Background briefing refresh while the app runs.
-- **Four agents, one per thread:** Default (router, Apple Intelligence), Research, Planner, Teach. Pick at chat creation or Default suggests handoff. No mid-chat switching in v1.
+- **Four agents, one per thread:** General (default), Research, Planner, Teach. Pick at chat creation or General suggests handoff. No mid-chat switching in v1.
 - **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review, edit, and delete in Settings Memory panel (undo list not implemented).
 - **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription), Claude, Gemini.
 - **iMessage:** Each inbound `zoro:` command → new conversation. Format: `zoro: [passcode ]research:|plan:|teach: <command>` (passcode optional). Thread continuation deferred Phase 2.
@@ -47,7 +47,7 @@ zoro/
 ├── Models/                  # Conversation, StoredMessage, AgentType
 ├── WorkspaceManager.swift   # Runtime state (workspace, todos, processes, execution context)
 ├── KeychainHelper.swift     # macOS Keychain wrapper for API keys / OAuth tokens
-├── *Tool.swift              # Tool protocol implementations
+├── *Tool.swift              # Tool protocol implementations (incl. TeachProgressTool.swift)
 ├── *LanguageModel.swift     # Custom backends: OpenAI, Gemini, Codex
 ├── Gmail*.swift             # Gmail OAuth, REST client, tool, auditor (backend; wiring incomplete)
 └── IMessage*.swift          # Send tool + SQLite listener
@@ -87,7 +87,48 @@ User input (BriefingHomeView / ChatView / IMessageListener)
     → MemoryExtractor.processConversation()
 ```
 
----
+### Agent tool matrix
+
+Tools registered in `AgentRunner.tools(for:)` (names are the tool `name` constants):
+
+| Agent | Tools |
+|---|---|
+| **General** (`default`) | `run_terminal_command`, `get_process_status`, `list_directory`, `read_file`, `write_file`, `patch`, `search_files`, `current_time`, `clarify`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `update_user_memory` |
+| **Research** | `tavily_search`, `manage_apple_notes`, `current_time`, `clarify`, `todo`, `update_user_memory`, `read_file`, `search_files` |
+| **Planner** | `manage_calendar_and_reminders`, `propose_calendar_events`, `current_time`, `clarify`, `todo`, `update_user_memory`, `manage_apple_notes` |
+| **Teach** | `update_tutoring_progress`, `update_user_memory`, `clarify`, `manage_apple_notes`, `current_time` |
+
+System instructions for each agent live in `AgentPrompts.swift`. `GmailTool` (`manage_gmail`) is **not** registered yet.
+
+### Persistence
+
+All on-disk data lives under `~/Library/Application Support/Zoro/`:
+
+| File | Owner | Purpose |
+|---|---|---|
+| `conversations.json` | `ConversationStore` | Chat threads and messages |
+| `profile.json` | `ProfileStore` | Structured memory facts and freeform notes |
+| `profile.md` | `ProfileStore` | Human-readable mirror of profile (also used for migration) |
+
+Keychain (via `KeychainHelper`): `anthropic_api_key`, `gemini_api_key`, `openai_api_key`, `tavily_api_key`, `imessage_passcode`, Gmail OAuth tokens, Codex refresh token.
+
+UserDefaults (selected keys): `selected_model_type`, `codex_model_name`, `hide_dock_icon`, `imessage_listener_enabled`, `imessage_sender_whitelist`, `briefing_refresh_interval_hours` (default 3).
+
+### Settings (`SettingsView`)
+
+Native Settings scene with two tabs:
+
+**General**
+- **Model** — backend picker (Apple Intelligence, PCC, Codex, Claude, Gemini, OpenAI); conditional API key fields; Codex sign-in / CLI import / device code; Tavily key; availability status
+- **Briefing** — background refresh interval (2 / 3 / 4 hours)
+- **Appearance** — hide Dock icon; launch at login
+- **Workspace** — optional folder attach for file/shell tools
+- **iMessage** — listener toggle, sender whitelist, optional passcode, Full Disk Access status
+
+**Memory**
+- Editable freeform profile notes
+- Saved facts (add, edit, delete; sources: auto, manual, planner, teach)
+
 
 ## Coding Conventions
 
@@ -114,7 +155,7 @@ User input (BriefingHomeView / ChatView / IMessageListener)
 - Use `withCheckedContinuation` / `withCheckedThrowingContinuation` for bridging callback-based APIs (e.g., EventKit permissions, ClarifyTool suspension).
 
 ### Secrets Management
-- API keys (Anthropic, Gemini, Tavily) and Gmail OAuth credentials/tokens are stored in the macOS Keychain via `KeychainHelper`, never hardcoded or stored in files.
+- API keys (Anthropic, Gemini, OpenAI, Tavily), Codex tokens, iMessage passcode, and Gmail OAuth credentials/tokens are stored in the macOS Keychain via `KeychainHelper`, never hardcoded or stored in files.
 - Keys are loaded on `onAppear` and saved on `onChange` of the corresponding text fields.
 
 ---
@@ -213,7 +254,7 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 4. **Command Prefix:** Messages must start with `zoro:` (case-insensitive). Agent routing prefixes (`research:`, `plan:`, `teach:`) come after the optional passcode.
 5. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
 6. **Global Rate Limiting:** Remote execution is capped at 5 commands per minute **app-wide** (not per sender).
-7. **Runtime Tool Restrictions:** iMessage sessions use the same `AgentRunner` tool registration as local chat, but disallowed tools fail at call time via `SecurityPolicy.isToolPermitted()` (e.g. shell, file writes, patches). `ClarifyTool` refuses to suspend on iMessage.
+7. **Runtime tool restrictions:** iMessage sessions use the same `AgentRunner` tool registration as local chat. Tools in `SecurityPolicy`'s `iMessageAllowedTools` whitelist may run remotely: `list_directory`, `read_file`, `search_files`, `current_time`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `manage_gmail`. Other tools fail via `WorkspaceManager.toolPermissionError()` when they check permissions. `ClarifyTool` refuses to suspend on iMessage. Notes and calendar actions have additional action-level restrictions via `isNotesActionPermitted()` / `isCalendarActionPermitted()`.
 8. **Workspace Path Validation:** All file tools resolve paths with `SecurityPolicy.resolveWorkspacePath()` and reject absolute paths or traversal outside the workspace root.
 9. **Attachment Scoping:** iMessage attachments are only read from `~/Library/Messages/Attachments`.
 10. **Outbound iMessage Restrictions:** Remote sessions may only reply to the requester who sent the command.
@@ -278,12 +319,11 @@ Setup guide: `reference/gmail-setup.md`
 `http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
 
 ### Known gaps (not yet implemented)
-- Wire `GmailTool` into `AgentRunner`, Settings UI, and response auditor
-- `TeachProgressTool` referenced in `AgentRunner.tools(for: .teach)` but no Swift file exists yet
+- Wire `GmailTool` into `AgentRunner`, Settings UI, and response auditor (`GmailReadAuditor.auditAssistantResponse` is not called from chat)
 - Image attachment OCR — text/PDF only today
 - Background push via Gmail Pub/Sub (requires public HTTPS endpoint)
 - Gmail header badge, inbox preview panel, and activity log UI
 
 ### Test target
-- `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests` for offline parsing coverage
+- `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests`, `CodexAuthTests`, and `CodexRequestSupportTests`
 
