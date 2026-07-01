@@ -178,8 +178,8 @@ WorkspaceManager.shared.runCommand("ls")</code></pre>
     <div class="tip-box">
         <div class="tip-title">Zoro Code Pattern Connection</div>
         <p style="font-size:0.95rem; margin:0; font-style:italic;">
-        In <code>ContentView.swift</code>, you will see:<br>
-        <code>@StateObject private var workspace = WorkspaceManager.shared</code><br>
+        In views like <code>ChatView.swift</code> and <code>SettingsView.swift</code>, you will see:<br>
+        <code>@ObservedObject private var workspace = WorkspaceManager.shared</code><br>
         Because `workspace` is a `@StateObject` and its properties like `workspaceURL` or `activeTodos` are marked `@Published` in `WorkspaceManager`, the chat UI instantly refreshes the folder path or task checklists whenever they change in the background!
         </p>
     </div>

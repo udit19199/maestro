@@ -159,7 +159,7 @@
         <li><code>@StateObject</code>: Creates and keeps a shared manager class (like <code>WorkspaceManager</code>) alive inside a View.</li>
     </ul>
     <div class="highlight-box">
-        <p><strong>The Zoro Connection:</strong> In <code>ContentView.swift</code>, the view holds <code>@StateObject private var workspace = WorkspaceManager.shared</code>. Inside `WorkspaceManager`, the list of tasks is <code>@Published var activeTodos: [TodoItem] = []</code>. Because of this, the moment an LLM adds a task to the todo list in the background, the UI instantly redraws to display it!</p>
+        <p><strong>The Zoro Connection:</strong> In views like <code>ChatView.swift</code> and <code>SettingsView.swift</code>, the UI holds <code>@ObservedObject private var workspace = WorkspaceManager.shared</code>. Inside <code>WorkspaceManager</code>, the list of tasks is <code>@Published var activeTodos: [TodoItem] = []</code>. Because of this, the moment an LLM adds a task to the todo list in the background, the UI instantly redraws to display it!</p>
     </div>
 
     <h2>Retrieval Practice</h2>

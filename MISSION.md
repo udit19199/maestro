@@ -4,8 +4,9 @@
 Enable the user to confidently maintain, extend, and debug the Zoro macOS application, allowing them to customize the assistant's tools, UI, and AI backend configuration for their personal workflows.
 
 ## Success looks like
-- Explain the lifecycle of a user prompt, from submission in `ContentView` to stream completion.
-- Identify how `WorkspaceManager` acts as the single source of truth and manages background commands and tasks.
+- Explain the lifecycle of a user prompt, from submission in `BriefingHomeView` or `ChatView` through `AgentRunner.sendMessage()` to stream completion.
+- Identify how `WorkspaceManager` holds runtime state and how `AgentRunner` orchestrates LLM sessions and tool execution.
+- Explain how `ConversationStore` persists threads and how `AppShell` routes between briefing home and chat views.
 - Create and register a new tool conforming to the `Tool` protocol.
 - Debug AppleScript, EventKit, Keychain, or Gmail OAuth/API integrations within the existing codebase.
 - Connect Gmail, explain the index-vs-read fetch model, and extend `manage_gmail` safely.

@@ -83,9 +83,9 @@ Hybrid system:
 
 ## Models
 
-- **Default agent** → Apple Intelligence
-- **Research, Planner, Teach** → ChatGPT when OpenAI API keys are configured; Apple Intelligence as fallback until then
-- **Build needed:** OpenAI backend (repo currently has Claude/Gemini integrations)
+- **Default agent** → user-selected backend (Apple Intelligence by default)
+- **Research, Planner, Teach** → OpenAI when an OpenAI API key is configured; Apple Intelligence as fallback
+- **Available backends:** Apple Intelligence (on-device), Private Cloud Compute, OpenAI (`OpenAILanguageModel.swift`), Codex/ChatGPT subscription (`CodexLanguageModel.swift`), Claude (`ClaudeForFoundationModels` SPM), Gemini (`GeminiLanguageModel.swift`)
 
 ## Core Flows
 
@@ -103,7 +103,7 @@ Hybrid system:
 
 **v1:** Calendar, reminders, user profile, recent Zoro chats.
 
-**Phase 2:** Email via existing Gmail integration in the codebase.
+**Phase 2:** Email via Gmail integration (backend code exists; agent registration and Settings UI wiring pending).
 
 ## Deferred (Phase 2+)
 

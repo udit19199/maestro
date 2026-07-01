@@ -19,7 +19,7 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 - **Menu bar primary:** Dock hidden by default (Settings toggle); login item on by default. Background briefing refresh while the app runs.
 - **Four agents, one per thread:** Default (router, Apple Intelligence), Research, Planner, Teach. Pick at chat creation or Default suggests handoff. No mid-chat switching in v1.
 - **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review/undo in Settings Memory panel.
-- **Models:** Default → Apple Intelligence. Research/Planner/Teach → ChatGPT when OpenAI key exists; Apple until then. OpenAI backend build needed (repo has Claude/Gemini today).
+- **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription), Claude, Gemini.
 - **iMessage:** Each inbound text → new conversation. Prefixes `research:`, `plan:`, `teach:` route agents. Thread continuation deferred Phase 2.
 - **See also:** `PRODUCT.md`, `DESIGN.md`
 
@@ -27,31 +27,65 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 
 ```
 zoro/
-├── zoroApp.swift            # @main App entry point
-├── ContentView.swift        # Single-view architecture: chat UI, settings, session management
-├── WorkspaceManager.swift   # Singleton state manager (workspace, processes, todos, research, sessions)
-├── KeychainHelper.swift     # macOS Keychain wrapper for API key / OAuth token storage
-├── GmailAuthManager.swift   # Gmail OAuth 2.0 desktop flow
-├── GmailService.swift       # Gmail REST API client (pagination, fetch reports)
-├── GmailManager.swift       # Gmail UI state + agent context injection
-├── *Tool.swift              # Individual tool implementations conforming to `Tool` protocol
+├── zoroApp.swift            # @main: WindowGroup (AppShell), MenuBarExtra, Settings scene
+├── AppDelegate.swift        # Dock visibility, login item, briefing background refresh
+├── Views/
+│   ├── AppShell.swift       # NavigationSplitView: sidebar + briefing home or chat
+│   ├── BriefingHomeView.swift
+│   ├── ChatView.swift
+│   ├── ConversationSidebarView.swift
+│   ├── ComposerView.swift
+│   ├── SettingsView.swift   # Native Settings scene (General + Memory tabs)
+│   └── ...
+├── Services/
+│   ├── AgentRunner.swift    # LLM sessions, tool sets, streaming, context compression
+│   ├── ConversationStore.swift
+│   ├── BriefingService.swift
+│   ├── ProfileStore.swift
+│   ├── AgentPrompts.swift
+│   └── ...
+├── Models/                  # Conversation, StoredMessage, AgentType
+├── WorkspaceManager.swift   # Runtime state (workspace, todos, processes, execution context)
+├── KeychainHelper.swift     # macOS Keychain wrapper for API keys / OAuth tokens
+├── *Tool.swift              # Tool protocol implementations
+├── *LanguageModel.swift     # Custom backends: OpenAI, Gemini, Codex
+├── Gmail*.swift             # Gmail OAuth, REST client, tool, auditor (backend; wiring incomplete)
+└── IMessage*.swift          # Send tool + SQLite listener
 ```
 
 ### Key Patterns
 
-1. **Single-View App**: The entire UI lives in `ContentView.swift`. There is no navigation stack or multi-window setup. Subviews like `MessageBubble` are defined as separate structs in the same file.
+1. **NavigationSplitView shell**: `AppShell` shows `BriefingHomeView` when no thread is selected and `ChatView` when a conversation is open. Settings live in the native Settings scene (`SettingsView`), not inline in the main window.
 
-2. **Singleton State Manager**: `WorkspaceManager` is an `ObservableObject` singleton accessed via `WorkspaceManager.shared`. It owns all shared state: workspace URL, active processes, todos, research steps, and clarification continuations.
+2. **AgentRunner orchestration**: `AgentRunner.shared` is the central orchestrator. It creates per-conversation `LanguageModelSession` instances, selects model backend and tools per agent type, streams responses into `ConversationStore`, and handles context compression on overflow.
 
-3. **Tool Protocol**: Each tool is a `struct` conforming to the `Tool` protocol from `FoundationModels`. Every tool follows the same pattern:
+3. **WorkspaceManager runtime state**: `WorkspaceManager.shared` holds workspace URL, active processes, todos, research steps, clarify continuations, and execution context (local vs iMessage). Session invalidation delegates to `AgentRunner.shared.invalidateAllSessions()`.
+
+4. **ConversationStore persistence**: Threads persist to `~/Library/Application Support/Zoro/conversations.json`. Messages survive app restarts.
+
+5. **Tool Protocol**: Each tool is a `struct` conforming to the `Tool` protocol from `FoundationModels`. Every tool follows the same pattern:
    - A `name` constant (the tool identifier used by the LLM)
    - A `description` constant (human-readable purpose)
    - A nested `@Generable struct Arguments` with `@Guide` annotations on each field
    - A `func call(arguments:) async throws -> String` implementation
 
-4. **Lazy Session Creation**: LLM sessions are created lazily via `getOrCreateSession()` and reset on workspace/model changes.
+6. **Tool registration**: Tools are registered in `AgentRunner.tools(for:)` per agent type. iMessage remote restrictions are enforced separately via `SecurityPolicy.isToolPermitted()`.
 
-5. **Streaming Responses**: The chat uses `activeSession.streamResponse(to:)` for real-time token streaming.
+7. **Lazy session creation**: Sessions are created lazily in `AgentRunner.getOrCreateSession(conversationID:agentType:modelType:)` and reset on model or config changes.
+
+8. **Streaming responses**: `AgentRunner.sendMessage()` calls `activeSession.streamResponse(to:)` and updates `ConversationStore` incrementally.
+
+### Request lifecycle
+
+```
+User input (BriefingHomeView / ChatView / IMessageListener)
+  → AgentRunner.sendMessage()
+    → ConversationStore.appendMessage()
+    → getOrCreateSession() with AgentPrompts + agent-specific tools + model backend
+    → LanguageModelSession.streamResponse()
+    → ConversationStore.updateLastMessageContent() (streaming)
+    → MemoryExtractor.processConversation()
+```
 
 ---
 
@@ -114,8 +148,9 @@ When adding a new tool to Zoro, follow these steps:
        }
    }
    ```
-3. **Register the tool** in `WorkspaceManager.swift` inside both `localTools` and (if appropriate) `iMessageTools` arrays.
-4. **Document the tool** in the `localInstructions` / `iMessageInstructions` strings in `WorkspaceManager.swift` so the LLM knows it's available.
+3. **Register the tool** in `AgentRunner.tools(for:)` for each agent type that should use it.
+4. **Add iMessage permissions** in `SecurityPolicy.isToolPermitted()` if the tool should be blocked or allowed in remote sessions.
+5. **Update agent instructions** in `AgentPrompts.swift` if the LLM needs explicit guidance about the new capability.
 
 ---
 
@@ -141,7 +176,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
-- **No Tests Yet**: There is a `zoroTests` unit test target with Gmail parsing tests. Run via ⌘U in Xcode.
+- **Unit tests**: The `zoroTests` target includes `GmailParsingTests`, `CodexAuthTests`, and `CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
 
 ---
 
@@ -158,7 +193,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 
 - **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Zoro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `ClaudeForFoundationModels` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
 - A Swift-for-Linux toolchain (`swift` 6.x via `swiftly`) *can* be installed, but it cannot compile this app: `swiftc -typecheck` fails immediately with `no such module 'FoundationModels'` / `no such module 'SwiftUI'`. Do not waste time trying to make it build on Linux.
-- There is **no test target** (single application target, no `XCTest`), **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
+- There is a **`zoroTests` unit test target** (XCTest), but it only runs on macOS via Xcode. There is **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
 - To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure a Claude or Gemini API key under the in-app Settings gear, which are stored in the macOS Keychain). Xcode auto-resolves the `ClaudeForFoundationModels` SPM dependency on first build (network required once).
 - Practical implication for cloud agents: scope work here to **code reading/editing and static reasoning**. Any verification that requires compiling or running the app must be done by the user on macOS.
 
@@ -197,12 +232,15 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 ### Overview
 Gmail is a first-class integration — not a secondary tool. The user relies on it heavily. Design goals: complete fetches, explicit completeness flags, and anti-hallucination guardrails.
 
+**Implementation status:** Backend code is in the repo (`GmailAuthManager`, `GmailService`, `GmailManager`, `GmailTool`, `GmailReadAuditor`). Wiring to agents and UI is **incomplete** — see gaps below.
+
 | File | Purpose |
 |---|---|
 | `GmailAuthManager.swift` | OAuth 2.0 desktop flow; tokens in Keychain |
 | `GmailService.swift` | REST client; pagination; `GmailFetchReport` on every response |
 | `GmailManager.swift` | Inbox preview, unread count, activity log, `contextualInstructions()` |
 | `GmailTool.swift` | LLM-facing `manage_gmail` tool |
+| `GmailReadAuditor.swift` | Tracks index vs full reads within a tool session |
 
 Setup guide: `reference/gmail-setup.md`
 
@@ -214,33 +252,36 @@ Setup guide: `reference/gmail-setup.md`
 - `mark_read`, `archive_message`, `star_message`, `unstar_message`, `modify_labels`, `list_labels`
 - `create_draft`, `reply_to_thread`, `send_email`, `trash_message`
 
-### Hard read enforcement
-- `GmailReadAuditor` blocks assistant responses that summarize email without a `read_*` call in the same turn
-- Applied in `ContentView` (local chat) and `IMessageListener` (remote)
-- Every tool response appends `session_messages_fully_read`
+### Hard read enforcement (designed behavior)
+- `GmailReadAuditor` is designed to block assistant responses that summarize email without a `read_*` call in the same turn
+- **Current wiring:** auditor records reads inside `GmailTool` only; response blocking in `ChatView` and `IMessageListener` is **not yet wired**
 
 ### Anti-hallucination design
 1. Every tool response includes a `=== GMAIL FETCH REPORT ===` block with `fetch_complete`, `items_fetched`, and warnings.
 2. Search/list results are explicitly marked INDEX ONLY — agent must call read_* before summarizing.
-3. When Gmail is connected, `WorkspaceManager.makeSession()` appends `GmailManager.contextualInstructions()` to system instructions.
-4. Connect/disconnect calls `WorkspaceManager.invalidateSessionsForConfigChange()` so new sessions pick up Gmail rules.
+3. When Gmail is connected, `GmailManager.contextualInstructions()` should be appended to session instructions.
+4. Connect/disconnect should call `WorkspaceManager.invalidateSessionsForConfigChange()` so new sessions pick up Gmail rules.
+
+**Current wiring gaps:**
+- `GmailTool` is **not registered** in `AgentRunner.tools(for:)` — agents cannot call `manage_gmail` yet
+- `GmailManager.contextualInstructions()` is **not injected** in `AgentRunner.getOrCreateSession()`
+- **No Gmail section** in `SettingsView.swift` (OAuth connect/disconnect UI pending)
+- **No header badge or inbox preview** in the current SwiftUI views
 
 ### Security & limits (`SecurityPolicy.swift`)
 - `gmailPageSize` = 25, `maxGmailMessagesPerOperation` = 250, `maxGmailBatchRead` = 20
 - `maxGmailBodyBytes` = 1 MB, `gmailMaxRetries` = 5 (429/5xx backoff)
 - iMessage remote: read/search allowed; send/trash denied via `isGmailActionPermitted()`
 
-### UI (`ContentView.swift`)
-- Header badge when connected (email, unread, sync, refresh)
-- Inbox preview panel (latest 5 messages)
-- Gmail activity log during agent runs
-
 ### OAuth redirect URI
 `http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
 
 ### Known gaps (not yet implemented)
+- Wire `GmailTool` into `AgentRunner`, Settings UI, and response auditor
+- `TeachProgressTool` referenced in `AgentRunner.tools(for: .teach)` but no Swift file exists yet
 - Image attachment OCR — text/PDF only today
 - Background push via Gmail Pub/Sub (requires public HTTPS endpoint)
+- Gmail header badge, inbox preview panel, and activity log UI
 
 ### Test target
 - `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests` for offline parsing coverage

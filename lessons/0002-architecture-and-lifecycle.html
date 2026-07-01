@@ -178,21 +178,25 @@
     <h1>Lesson 2: Zoro Architecture & Request Lifecycle</h1>
     <p>Welcome! Now that you have the basic Swift and SwiftUI mental model down, we will explore the high-level architecture of Zoro and trace exactly what happens when you type a prompt and press <em>Send</em>.</p>
 
-    <h2>The Three Core Layers</h2>
-    <p>Zoro is structured around a clean, single-view SwiftUI design. It relies on three primary files to manage everything from UI rendering to LLM execution and system access:</p>
+    <h2>The Core Layers</h2>
+    <p>Zoro uses a <code>NavigationSplitView</code> shell with briefing-first home and dedicated chat views. Four primary areas manage UI rendering, orchestration, persistence, and system access:</p>
 
     <ol>
         <li>
-            <strong>The View Layer (<code>ContentView.swift</code>)</strong>: 
-            This is a single SwiftUI view containing the chat interface, settings panel, and configuration toggles. It listens to the state manager for updates and triggers the AI agent when a user sends a message.
+            <strong>The View Layer (<code>Views/</code>)</strong>: 
+            <code>AppShell.swift</code> hosts the split view. <code>BriefingHomeView</code> shows the daily dashboard when no thread is selected; <code>ChatView</code> shows an open conversation. <code>SettingsView</code> lives in the native Settings scene. Views observe <code>ConversationStore</code> and <code>WorkspaceManager</code> for updates.
         </li>
         <li>
-            <strong>The State Manager (<code>WorkspaceManager.swift</code>)</strong>: 
-            A singleton class accessible via <code>WorkspaceManager.shared</code>. It lives on the <code>@MainActor</code> (main thread) and holds all active state: the selected workspace path, active todos, active processes, and background task logs.
+            <strong>The Orchestrator (<code>Services/AgentRunner.swift</code>)</strong>: 
+            Creates per-conversation <code>LanguageModelSession</code> instances, selects model backend and tools per agent type, streams responses into <code>ConversationStore</code>, and handles context compression.
+        </li>
+        <li>
+            <strong>The Runtime State Manager (<code>WorkspaceManager.swift</code>)</strong>: 
+            A singleton on the <code>@MainActor</code> holding workspace path, active todos, processes, research steps, clarify continuations, and execution context (local vs iMessage).
         </li>
         <li>
             <strong>The System Bridge / Tools Layer (<code>*Tool.swift</code>)</strong>: 
-            A collection of files defining individual capabilities (like reading files, executing terminal commands, or searching the web). Each tool conforms to the <code>Tool</code> protocol from Apple's <code>FoundationModels</code> library.
+            Individual capabilities (files, terminal, calendar, web search, Notes, iMessage). Registered per agent in <code>AgentRunner.tools(for:)</code>. Each conforms to the <code>Tool</code> protocol from <code>FoundationModels</code>.
         </li>
     </ol>
 
@@ -202,11 +206,11 @@
     <div class="flow-diagram">
         <div class="flow-step">
             <div class="flow-title">1. Submission</div>
-            <div class="flow-desc">The user submits a message in the text input. <code>ContentView.triggerAgent()</code> is invoked.</div>
+            <div class="flow-desc">The user submits a message from <code>BriefingHomeView</code> or <code>ChatView</code>. The view calls <code>AgentRunner.shared.sendMessage()</code>.</div>
         </div>
         <div class="flow-step">
             <div class="flow-title">2. Session Setup</div>
-            <div class="flow-desc">Zoro lazily loads the <code>LanguageModelSession</code> using the chosen backend (Apple Intelligence, Claude, local Qwen, or Mock).</div>
+            <div class="flow-desc"><code>AgentRunner</code> lazily creates a <code>LanguageModelSession</code> via <code>getOrCreateSession()</code> with the chosen backend (Apple Intelligence, OpenAI, Claude, Gemini, Codex, or PCC) and agent-specific tools.</div>
         </div>
         <div class="flow-step">
             <div class="flow-title">3. Model Request</div>
@@ -218,7 +222,7 @@
         </div>
         <div class="flow-step">
             <div class="flow-title">5. Streaming & Completion</div>
-            <div class="flow-desc">The LLM streams its final written response to the screen, updating the chat UI dynamically, and sets the loading state to false.</div>
+            <div class="flow-desc">The LLM streams its final written response via <code>ConversationStore.updateLastMessageContent()</code>, updating the chat UI dynamically. <code>MemoryExtractor</code> may extract profile facts from the conversation.</div>
         </div>
     </div>
 
@@ -246,7 +250,7 @@
             const feedback = document.getElementById("quiz-feedback");
             feedback.style.display = "block";
             if (num === 2) {
-                feedback.innerHTML = "✨ Correct! By using `withCheckedContinuation`, ClarifyTool pauses the Swift Task asynchronously. When the user responds via the chat box, `triggerAgent()` detects the continuation, resumes it with the reply text, and the LLM's tool loop proceeds seamlessly.";
+                feedback.innerHTML = "✨ Correct! By using `withCheckedContinuation`, ClarifyTool pauses the Swift Task asynchronously. When the user responds via the chat composer, `AgentRunner.sendMessage()` detects the continuation, resumes it with the reply text, and the LLM's tool loop proceeds seamlessly.";
                 feedback.style.color = "#1b5e20";
             } else {
                 feedback.innerHTML = "❌ Not quite. Recall that the tool is asynchronous and can pause the thread without throwing errors or polling. Try reading about CheckedContinuation in WorkspaceManager.swift and ClarifyTool.swift!";
