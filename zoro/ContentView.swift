@@ -75,12 +75,15 @@ struct ContentView: View {
     
     @State private var anthropicApiKey: String = ""
     @State private var geminiApiKey: String = ""
+    @State private var codexModelName: String = "gpt-5-codex"
     @State private var tavilyApiKey: String = ""
     @State private var gmailClientId: String = ""
     @State private var gmailClientSecret: String = ""
     @ObservedObject private var gmailAuth = GmailAuthManager.shared
     @ObservedObject private var gmailManager = GmailManager.shared
+    @ObservedObject private var codexAuth = CodexAuthManager.shared
     @State private var gmailStatusMessage: String = "Not connected"
+    @State private var codexStatusMessage: String = "Not connected"
     @State private var showSettings: Bool = false
     @State private var modelAvailabilityMessage: String = "Checking availability..."
     @State private var isModelReady: Bool = false
@@ -236,6 +239,113 @@ struct ContentView: View {
                                     updateModelAvailability()
                                     workspace.resetSession()
                                 }
+                        }
+                    }
+
+                    if workspace.selectedModelType == .codex {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Uses your ChatGPT / Codex subscription via the same backend as the Codex CLI.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Codex Model:")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                TextField("e.g. gpt-5-codex", text: $codexModelName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(.body, design: .monospaced))
+                                    .onChange(of: codexModelName) { oldValue, newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "codex_model_name")
+                                        workspace.resetSession()
+                                    }
+                            }
+
+                            HStack(spacing: 12) {
+                                if codexAuth.isConnected {
+                                    Button("Disconnect Codex") {
+                                        codexAuth.disconnect()
+                                        codexStatusMessage = "Disconnected"
+                                        updateModelAvailability()
+                                    }
+                                    .buttonStyle(.bordered)
+                                } else {
+                                    Button(codexAuth.isAuthorizing ? "Signing in..." : "Sign in with ChatGPT") {
+                                        Task {
+                                            do {
+                                                try await codexAuth.connect()
+                                                if let email = codexAuth.connectedEmail {
+                                                    codexStatusMessage = "Connected as \(email)"
+                                                } else {
+                                                    codexStatusMessage = "Connected"
+                                                }
+                                                updateModelAvailability()
+                                            } catch {
+                                                codexStatusMessage = error.localizedDescription
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(codexAuth.isAuthorizing)
+
+                                    Button("Import from Codex CLI") {
+                                        do {
+                                            try codexAuth.importFromCLI()
+                                            if let email = codexAuth.connectedEmail {
+                                                codexStatusMessage = "Imported credentials for \(email)"
+                                            } else {
+                                                codexStatusMessage = "Imported Codex CLI credentials"
+                                            }
+                                            updateModelAvailability()
+                                        } catch {
+                                            codexStatusMessage = error.localizedDescription
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(codexAuth.isAuthorizing)
+
+                                    Button("Device Code") {
+                                        Task {
+                                            do {
+                                                try await codexAuth.startDeviceCodeLogin()
+                                                if let email = codexAuth.connectedEmail {
+                                                    codexStatusMessage = "Connected as \(email)"
+                                                } else {
+                                                    codexStatusMessage = "Connected"
+                                                }
+                                                updateModelAvailability()
+                                            } catch {
+                                                codexStatusMessage = error.localizedDescription
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(codexAuth.isAuthorizing)
+                                }
+                            }
+
+                            if let prompt = codexAuth.deviceCodePrompt {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("1. Visit: \(prompt.verificationURL)")
+                                    Text("2. Enter code: \(prompt.userCode)")
+                                        .font(.system(.body, design: .monospaced))
+                                        .bold()
+                                    Text("Waiting for authorization...")
+                                        .foregroundColor(.secondary)
+                                }
+                                .font(.caption)
+                                .padding(10)
+                                .background(Color(NSColor.controlBackgroundColor))
+                                .cornerRadius(8)
+                            }
+
+                            HStack(spacing: 8) {
+                                Image(systemName: codexAuth.isConnected ? "checkmark.circle.fill" : "terminal.fill")
+                                    .foregroundColor(codexAuth.isConnected ? .green : .secondary)
+                                Text(codexStatusMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                     
@@ -631,6 +741,7 @@ struct ContentView: View {
         .onAppear {
             self.anthropicApiKey = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
             self.geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
+            self.codexModelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
             self.tavilyApiKey = KeychainHelper.retrieve(key: "tavily_api_key") ?? ""
             self.gmailClientId = KeychainHelper.retrieve(key: "gmail_client_id") ?? ""
             self.gmailClientSecret = KeychainHelper.retrieve(key: "gmail_client_secret") ?? ""
@@ -638,6 +749,7 @@ struct ContentView: View {
             Task {
                 await gmailAuth.refreshConnectionStatus()
                 await gmailManager.refreshSnapshot()
+                await codexAuth.refreshConnectionStatus()
                 await MainActor.run {
                     if gmailAuth.isConnected, let email = gmailAuth.connectedEmail {
                         gmailStatusMessage = "Connected as \(email)"
@@ -645,6 +757,14 @@ struct ContentView: View {
                         gmailStatusMessage = "Connected"
                     } else {
                         gmailStatusMessage = "Not connected"
+                    }
+
+                    if codexAuth.isConnected, let email = codexAuth.connectedEmail {
+                        codexStatusMessage = "Connected as \(email)"
+                    } else if codexAuth.isConnected {
+                        codexStatusMessage = "Connected"
+                    } else {
+                        codexStatusMessage = "Not connected"
                     }
                 }
             }
@@ -774,6 +894,16 @@ struct ContentView: View {
                     } else {
                         modelAvailabilityMessage = "Gemini via API key is ready."
                         isModelReady = true
+                    }
+                }
+            case .codex:
+                await MainActor.run {
+                    if codexAuth.isConnected {
+                        modelAvailabilityMessage = "Codex via ChatGPT subscription is ready."
+                        isModelReady = true
+                    } else {
+                        modelAvailabilityMessage = "Sign in with ChatGPT or import from Codex CLI."
+                        isModelReady = false
                     }
                 }
             }
@@ -920,6 +1050,9 @@ struct ContentView: View {
                 tempSession = LanguageModelSession(model: ClaudeLanguageModel(name: .sonnet4_6, auth: .apiKey(anthropicApiKey)))
             case .gemini:
                 tempSession = LanguageModelSession(model: GeminiLanguageModel(modelName: "gemini-2.5-flash", apiKey: geminiApiKey))
+            case .codex:
+                let modelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+                tempSession = LanguageModelSession(model: CodexLanguageModel(modelName: modelName))
             }
             
             let prompt = "Please write a highly concise summary (under 100 words) of the conversation so far, focusing on what was accomplished and what context is needed to continue:\n\n\(chatText)"

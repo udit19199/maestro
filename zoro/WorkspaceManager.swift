@@ -176,6 +176,20 @@ class WorkspaceManager: ObservableObject {
                 tools: tools,
                 instructions: fullInstructions
             )
+        case .codex:
+            guard KeychainHelper.retrieve(key: "codex_refresh_token") != nil else {
+                throw NSError(
+                    domain: "ZoroError",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Codex is not connected. Sign in with your ChatGPT account in Settings."]
+                )
+            }
+            let modelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
+            return LanguageModelSession(
+                model: CodexLanguageModel(modelName: modelName),
+                tools: tools,
+                instructions: fullInstructions
+            )
         }
     }
 
@@ -406,6 +420,7 @@ struct ChatMessage: Identifiable, Equatable {
 enum ModelType: String, CaseIterable, Identifiable {
     case system = "On-Device (Apple Intelligence)"
     case pcc = "Private Cloud Compute"
+    case codex = "Codex (ChatGPT Subscription)"
     case claude = "Claude (Anthropic)"
     case gemini = "Gemini (Google)"
 
