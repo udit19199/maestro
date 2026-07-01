@@ -50,12 +50,12 @@ Try these prompts:
 
 | File | Role |
 |---|---|
-| `GmailAuthManager.swift` | OAuth flow, token refresh, Keychain storage |
-| `GmailService.swift` | Gmail REST API client, pagination, fetch reports |
-| `GmailManager.swift` | Inbox snapshot, activity log, agent context injection |
-| `GmailTool.swift` | `manage_gmail` tool exposed to the LLM |
-| `GmailReadAuditor.swift` | Tracks index vs full reads (response blocking not yet wired in chat) |
-| `SecurityPolicy.swift` | Gmail limits (page size, batch read, body bytes, retries) |
+| `zoro/Integrations/Gmail/GmailAuthManager.swift` | OAuth flow, token refresh, Keychain storage |
+| `zoro/Integrations/Gmail/GmailService.swift` | Gmail REST API client, pagination, fetch reports |
+| `zoro/Integrations/Gmail/GmailManager.swift` | Inbox snapshot, activity log, agent context injection |
+| `zoro/Integrations/Gmail/GmailTool.swift` | `manage_gmail` tool exposed to the LLM |
+| `zoro/Integrations/Gmail/GmailReadAuditor.swift` | Tracks index vs full reads (response blocking not yet wired in chat) |
+| `zoro/Tools/SecurityPolicy.swift` | Gmail limits (page size, batch read, body bytes, retries) |
 
 **Wiring status:** `GmailTool` is not yet registered in `AgentRunner.tools(for:)`. Session instructions from `GmailManager.contextualInstructions()` are not yet injected in `AgentRunner.getOrCreateSession()`. Settings UI and header/inbox preview are pending.
 

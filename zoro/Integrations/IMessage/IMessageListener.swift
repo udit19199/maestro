@@ -389,7 +389,7 @@ class IMessageListener {
         return chunks.isEmpty ? [text] : chunks
     }
 
-    /// Parses `research:`, `plan:`, `teach:` prefixes per PRODUCT.md.
+    /// Parses `research:`, `plan:`, `teach:` prefixes per docs/PRODUCT.md.
     private func parseAgentType(from prompt: String) -> AgentType {
         let lower = prompt.lowercased()
         if lower.hasPrefix("research:") { return .research }

@@ -21,14 +21,15 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 - **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review, edit, and delete in Settings Memory panel (undo list not implemented).
 - **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription), Claude, Gemini.
 - **iMessage:** Each inbound `zoro:` command → new conversation. Format: `zoro: [passcode ]research:|plan:|teach: <command>` (passcode optional). Thread continuation deferred Phase 2.
-- **See also:** `PRODUCT.md`, `DESIGN.md`
+- **See also:** `docs/PRODUCT.md`, `docs/DESIGN.md`
 
 ### High-Level Structure
 
 ```
 zoro/
-├── zoroApp.swift            # @main: WindowGroup (AppShell), MenuBarExtra, Settings scene
-├── AppDelegate.swift        # Dock visibility, login item, briefing background refresh
+├── App/
+│   ├── zoroApp.swift        # @main: WindowGroup (AppShell), MenuBarExtra, Settings scene
+│   └── AppDelegate.swift    # Dock visibility, login item, briefing background refresh
 ├── Views/
 │   ├── AppShell.swift       # NavigationSplitView: sidebar + briefing home or chat
 │   ├── BriefingHomeView.swift
@@ -45,12 +46,15 @@ zoro/
 │   ├── AgentPrompts.swift
 │   └── ...
 ├── Models/                  # Conversation, StoredMessage, AgentType
-├── WorkspaceManager.swift   # Runtime state (workspace, todos, processes, execution context)
-├── KeychainHelper.swift     # macOS Keychain wrapper for API keys / OAuth tokens
-├── *Tool.swift              # Tool protocol implementations (incl. TeachProgressTool.swift)
-├── *LanguageModel.swift     # Custom backends: OpenAI, Gemini, Codex
-├── Gmail*.swift             # Gmail OAuth, REST client, tool, auditor (backend; wiring incomplete)
-└── IMessage*.swift          # Send tool + SQLite listener
+├── Tools/                   # Tool protocol implementations + SecurityPolicy
+├── Integrations/
+│   ├── Gmail/               # OAuth, REST client, tool, auditor (wiring incomplete)
+│   └── IMessage/            # Send tool + SQLite listener
+├── LanguageModels/          # OpenAI, Gemini, Codex backends and auth helpers
+├── Support/
+│   ├── WorkspaceManager.swift  # Runtime state (workspace, todos, processes, execution context)
+│   └── KeychainHelper.swift      # macOS Keychain wrapper for API keys / OAuth tokens
+└── Assets.xcassets
 ```
 
 ### Key Patterns
@@ -141,7 +145,7 @@ Native Settings scene with two tabs:
 ### Style
 - Use `// MARK: -` section headers to separate logical groups within a file (see `FileTools.swift`).
 - Use Xcode's default file header comment block (`// Created by ... on ...`).
-- Prefer inline comments that explain *why*, not *what*, unless the code is educational in nature (see `WorkspaceManager.swift` for examples of explanatory comments aimed at learning).
+- Prefer inline comments that explain *why*, not *what*.
 - Keep `import` statements minimal — only import frameworks that are directly used.
 
 ### Error Handling
@@ -164,7 +168,7 @@ Native Settings scene with two tabs:
 
 When adding a new tool to Zoro, follow these steps:
 
-1. **Create a new file** named `<ToolName>Tool.swift` in the `zoro/` directory.
+1. **Create a new file** named `<ToolName>Tool.swift` in `zoro/Tools/`.
 2. **Define a struct** conforming to `Tool` from `FoundationModels`:
    ```swift
    import Foundation
@@ -217,7 +221,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
-- **Unit tests**: The `zoroTests` target includes `GmailParsingTests`, `CodexAuthTests`, and `CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
+- **Unit tests**: The `zoroTests` target includes `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
 
 ---
 
@@ -235,7 +239,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Zoro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `ClaudeForFoundationModels` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
 - A Swift-for-Linux toolchain (`swift` 6.x via `swiftly`) *can* be installed, but it cannot compile this app: `swiftc -typecheck` fails immediately with `no such module 'FoundationModels'` / `no such module 'SwiftUI'`. Do not waste time trying to make it build on Linux.
 - There is a **`zoroTests` unit test target** (XCTest), but it only runs on macOS via Xcode. There is **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
-- To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure a Claude or Gemini API key under the in-app Settings gear, which are stored in the macOS Keychain). Xcode auto-resolves the `ClaudeForFoundationModels` SPM dependency on first build (network required once).
+- To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure a Claude or Gemini API key in Settings (⌘,), stored in the macOS Keychain). Xcode auto-resolves the `ClaudeForFoundationModels` SPM dependency on first build (network required once).
 - Practical implication for cloud agents: scope work here to **code reading/editing and static reasoning**. Any verification that requires compiling or running the app must be done by the user on macOS.
 
 ---
@@ -244,8 +248,8 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 
 ### Overview
 Zoro supports a native, zero-dependency iMessage listener that allows remote command execution and notification dispatch using macOS native APIs:
-- **Outgoing Messages:** Utilizes `IMessageTool.swift` which drives the native `Messages.app` using AppleScript via `/usr/bin/osascript`.
-- **Incoming Messages:** Utilizes `IMessageListener.swift` which opens `~/Library/Messages/chat.db` in read-only mode using macOS's built-in `SQLite3` bindings. Write events are monitored efficiently in real-time using a GCD `DispatchSource` file watcher.
+- **Outgoing Messages:** `Integrations/IMessage/IMessageTool.swift` drives the native `Messages.app` using AppleScript via `/usr/bin/osascript`.
+- **Incoming Messages:** `Integrations/IMessage/IMessageListener.swift` opens `~/Library/Messages/chat.db` in read-only mode using macOS's built-in `SQLite3` bindings. Write events are monitored efficiently in real-time using a GCD `DispatchSource` file watcher.
 
 ### Security Controls
 1. **Full Disk Access:** Accessing `chat.db` requires Full Disk Access enabled in macOS System Settings for the parent target (Xcode/Zoro). If not granted, the app surfaces a clear diagnostic warning.
@@ -278,11 +282,11 @@ Gmail is a first-class integration — not a secondary tool. The user relies on 
 
 | File | Purpose |
 |---|---|
-| `GmailAuthManager.swift` | OAuth 2.0 desktop flow; tokens in Keychain |
-| `GmailService.swift` | REST client; pagination; `GmailFetchReport` on every response |
-| `GmailManager.swift` | Inbox preview, unread count, activity log, `contextualInstructions()` |
-| `GmailTool.swift` | LLM-facing `manage_gmail` tool |
-| `GmailReadAuditor.swift` | Tracks index vs full reads within a tool session |
+| `Integrations/Gmail/GmailAuthManager.swift` | OAuth 2.0 desktop flow; tokens in Keychain |
+| `Integrations/Gmail/GmailService.swift` | REST client; pagination; `GmailFetchReport` on every response |
+| `Integrations/Gmail/GmailManager.swift` | Inbox preview, unread count, activity log, `contextualInstructions()` |
+| `Integrations/Gmail/GmailTool.swift` | LLM-facing `manage_gmail` tool |
+| `Integrations/Gmail/GmailReadAuditor.swift` | Tracks index vs full reads within a tool session |
 
 Setup guide: `reference/gmail-setup.md`
 
@@ -325,5 +329,5 @@ Setup guide: `reference/gmail-setup.md`
 - Gmail header badge, inbox preview panel, and activity log UI
 
 ### Test target
-- `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests`, `CodexAuthTests`, and `CodexRequestSupportTests`
+- `zoroTests` — run with ⌘U in Xcode; includes `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`
 
