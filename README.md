@@ -17,25 +17,39 @@ Native macOS personal AI assistant built with SwiftUI and Apple's `FoundationMod
 
 ## Tests
 
-Run unit tests with ⌘U in Xcode on macOS. The `zoroTests` target includes Gmail parsing and Codex auth/request tests.
+Run unit tests with ⌘U in Xcode on macOS. The `zoroTests` target covers Gmail parsing and Codex auth/request helpers.
 
 ## Documentation
 
 | Document | Purpose |
 |---|---|
-| [PRODUCT.md](./PRODUCT.md) | Product vision, agents, flows, non-goals |
-| [DESIGN.md](./DESIGN.md) | Visual system and UI components |
+| [docs/PRODUCT.md](./docs/PRODUCT.md) | Product vision, agents, flows, non-goals |
+| [docs/DESIGN.md](./docs/DESIGN.md) | Visual system and UI components |
 | [.agents/AGENTS.md](./.agents/AGENTS.md) | Architecture, conventions, and agent integration guide |
 | [reference/gmail-setup.md](./reference/gmail-setup.md) | Gmail OAuth setup (backend wiring pending) |
-| [MISSION.md](./MISSION.md) | Codebase learning mission |
 
 ## Project layout
 
 ```
-zoro/           Swift app source (Views/, Services/, Models/, tools)
-zoroTests/      Unit tests
-zoro.xcodeproj/ Xcode project (SPM: ClaudeForFoundationModels 0.1.2)
-lessons/        HTML curriculum for learning the codebase
+zoro/
+├── App/                 Entry point (zoroApp, AppDelegate)
+├── Views/               SwiftUI screens and components
+├── Services/            AgentRunner, stores, briefing, prompts
+├── Models/              Conversation, messages, agent types
+├── Tools/               FoundationModels tool implementations
+├── Integrations/
+│   ├── Gmail/           OAuth, REST client, manage_gmail tool
+│   └── IMessage/        Remote listener and send tool
+├── LanguageModels/      OpenAI, Gemini, Codex backends
+├── Support/             Keychain, WorkspaceManager
+└── Assets.xcassets
+
+zoroTests/
+├── Gmail/
+└── Codex/
+
+docs/                    Product and design specs
+reference/               Integration setup guides
 ```
 
 ## Remote iMessage commands
