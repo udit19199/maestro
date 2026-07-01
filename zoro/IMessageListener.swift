@@ -334,6 +334,8 @@ class IMessageListener {
                 select: false
             )
 
+            WorkspaceManager.shared.iMessageRequester = sender
+
             Task {
                 await AgentRunner.shared.sendMessage(conversationID: conversation.id, text: commandText) { reply in
                     if !reply.isEmpty, !reply.hasPrefix("Error:") {

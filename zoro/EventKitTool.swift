@@ -9,6 +9,7 @@ import Foundation
 import FoundationModels
 import EventKit
 
+@MainActor
 struct EventKitTool: Tool {
     let name = "manage_calendar_and_reminders"
     let description = "Create, read, list, and complete native macOS calendar events and reminders."

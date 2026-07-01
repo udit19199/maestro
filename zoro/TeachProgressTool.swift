@@ -6,6 +6,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct TeachProgressTool: Tool {
     let name = "update_tutoring_progress"
     let description = "Update tutoring curriculum state for the current Teach conversation. Use after each lesson segment to track topic, module progress, and next steps."

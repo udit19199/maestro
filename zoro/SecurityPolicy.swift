@@ -12,6 +12,11 @@ enum AgentExecutionContext: Equatable {
     case iMessage(requester: String)
 }
 
+struct WorkspacePathResolutionError: Error, CustomStringConvertible {
+    let message: String
+    var description: String { message }
+}
+
 enum SecurityPolicy {
     static let maxFileReadBytes = 2_097_152
     static let maxShellOutputBytes = 524_288
@@ -155,13 +160,13 @@ enum SecurityPolicy {
         return allowedSenders.contains(normalizedSender)
     }
 
-    static func resolveWorkspacePath(_ path: String, relativeTo workspaceURL: URL) -> Result<URL, String> {
+    static func resolveWorkspacePath(_ path: String, relativeTo workspaceURL: URL) -> Result<URL, WorkspacePathResolutionError> {
         let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedPath.contains("\0") {
-            return .failure("Error: Invalid path.")
+            return .failure(WorkspacePathResolutionError(message: "Error: Invalid path."))
         }
         if trimmedPath.hasPrefix("/") || trimmedPath.hasPrefix("~") {
-            return .failure("Error: Absolute paths are not allowed. Use a path relative to the workspace.")
+            return .failure(WorkspacePathResolutionError(message: "Error: Absolute paths are not allowed. Use a path relative to the workspace."))
         }
 
         let workspaceRoot = workspaceURL.standardizedFileURL
@@ -176,7 +181,7 @@ enum SecurityPolicy {
         let targetPath = targetURL.path
         let isInsideWorkspace = targetPath == rootPath || targetPath.hasPrefix(rootPath + "/")
         guard isInsideWorkspace else {
-            return .failure("Error: Path escapes workspace boundary.")
+            return .failure(WorkspacePathResolutionError(message: "Error: Path escapes workspace boundary."))
         }
 
         return .success(targetURL)

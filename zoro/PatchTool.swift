@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct PatchTool: Tool {
     let name = "patch"
     let description = "Edit a file by replacing a unique contiguous block of code/text (find) with another block (replace). This is the preferred method for editing existing files."
@@ -35,7 +36,7 @@ struct PatchTool: Tool {
 
         switch SecurityPolicy.resolveWorkspacePath(arguments.path, relativeTo: workspaceURL) {
         case .failure(let error):
-            return error
+            return error.message
         case .success(let fileURL):
             let fileManager = FileManager.default
             guard fileManager.fileExists(atPath: fileURL.path) else {

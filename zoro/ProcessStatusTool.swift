@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct ProcessStatusTool: Tool {
     let name = "get_process_status"
     let description = "Check the status, running state, and output logs of active background processes."

@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct ClarifyTool: Tool {
     let name = "clarify"
     let description = "Ask the user a clarifying question when requirements are ambiguous, or when user input is needed to proceed. Suspends execution until the user replies."

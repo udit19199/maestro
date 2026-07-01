@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct AppleNotesTool: Tool {
     let name = "manage_apple_notes"
     let description = "Create, read, search, list, and append to notes inside the native macOS Apple Notes app. Output will sync to iCloud automatically."

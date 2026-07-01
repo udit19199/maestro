@@ -34,6 +34,25 @@ class WorkspaceManager: ObservableObject {
     var activeAgentType: AgentType?
     var isIMessageContext = false
 
+    var currentExecutionContext: AgentExecutionContext = .local
+    var iMessageRequester: String?
+
+    func invalidateSessionsForConfigChange() {
+        AgentRunner.shared.invalidateAllSessions()
+    }
+
+    func finishRemoteExecution() {
+        currentExecutionContext = .local
+        iMessageRequester = nil
+    }
+
+    func toolPermissionError(for toolName: String) -> String? {
+        guard SecurityPolicy.isToolPermitted(toolName, context: currentExecutionContext) else {
+            return "Error: Tool '\(toolName)' is not permitted in \(SecurityPolicy.contextDescription(currentExecutionContext))."
+        }
+        return nil
+    }
+
     /// Clears ephemeral agent state and invalidates LLM sessions (messages persist in ConversationStore).
     func resetSession() {
         AgentRunner.shared.invalidateAllSessions()
@@ -43,6 +62,8 @@ class WorkspaceManager: ObservableObject {
         activeConversationID = nil
         activeAgentType = nil
         isIMessageContext = false
+        currentExecutionContext = .local
+        iMessageRequester = nil
     }
 
     func setPendingCalendarProposals(_ proposals: [PlannerEventProposal]) {
@@ -178,6 +199,10 @@ class WorkspaceManager: ObservableObject {
     
     // 'async throws' means this function runs in the background (asynchronously)
     // and can throw errors if something fails (like permission errors).
+    func pruneTerminatedProcesses() {
+        activeProcesses = activeProcesses.filter { $0.value.isRunning }
+    }
+
     func runCommand(_ command: String) async throws -> String {
         
         // 'guard let ... else' is Swift's way of unwrapping an Optional.

@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct TodoTool: Tool {
     let name = "todo"
     let description = "Read or write Zoro's internal task list. Use this to break down complex tasks, track progress, and maintain focus. Pass 'todos' to write, omit it to read."

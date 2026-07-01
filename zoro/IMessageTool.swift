@@ -8,6 +8,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct IMessageTool: Tool {
     let name = "send_imessage"
     let description = "Send a text message or iMessage to a recipient (phone number or Apple ID email)."

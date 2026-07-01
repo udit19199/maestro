@@ -76,10 +76,10 @@ final class CodexAuthManager: ObservableObject {
         do {
             _ = try await getValidCredentials()
             isConnected = true
-            connectedEmail = emailFromStoredTokens()
+            connectedEmail = Self.emailFromStoredTokens()
         } catch {
             isConnected = KeychainHelper.retrieve(key: "codex_refresh_token") != nil
-            connectedEmail = emailFromStoredTokens()
+            connectedEmail = Self.emailFromStoredTokens()
         }
     }
 
@@ -99,7 +99,7 @@ final class CodexAuthManager: ObservableObject {
         let tokens = try CodexAuthSupport.parseChatGPTAuthDocument(data)
         try persistTokens(from: tokens)
         isConnected = true
-        connectedEmail = emailFromStoredTokens()
+        connectedEmail = Self.emailFromStoredTokens()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
@@ -128,7 +128,7 @@ final class CodexAuthManager: ObservableObject {
 
         try await exchangeAuthorizationCode(code: code, redirectURI: redirectURI, codeVerifier: codeVerifier)
         isConnected = true
-        connectedEmail = emailFromStoredTokens()
+        connectedEmail = Self.emailFromStoredTokens()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
@@ -160,7 +160,7 @@ final class CodexAuthManager: ObservableObject {
         )
 
         isConnected = true
-        connectedEmail = emailFromStoredTokens()
+        connectedEmail = Self.emailFromStoredTokens()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 

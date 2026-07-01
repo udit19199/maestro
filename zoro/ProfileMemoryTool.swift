@@ -6,6 +6,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct ProfileMemoryTool: Tool {
     let name = "update_user_memory"
     let description = "Save a durable fact or progress note about the user to their profile. Use for confirmed preferences, goals, or tutoring/planning progress."

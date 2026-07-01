@@ -49,7 +49,13 @@ final class AgentRunner: ObservableObject {
         workspace.pendingCalendarProposals = []
         workspace.activeConversationID = conversationID
         workspace.activeAgentType = conversation.agentType
-        workspace.isIMessageContext = conversation.source == .imessage
+        if conversation.source == .imessage {
+            workspace.isIMessageContext = true
+            workspace.currentExecutionContext = .iMessage(requester: workspace.iMessageRequester ?? "")
+        } else {
+            workspace.isIMessageContext = false
+            workspace.currentExecutionContext = .local
+        }
 
         if let continuation = workspace.clarifyContinuation {
             conversationStore.appendMessage(to: conversationID, message: StoredMessage(role: .user, content: trimmed))
@@ -161,6 +167,8 @@ final class AgentRunner: ObservableObject {
         workspace.activeConversationID = nil
         workspace.activeAgentType = nil
         workspace.isIMessageContext = false
+        workspace.currentExecutionContext = .local
+        workspace.iMessageRequester = nil
     }
 
     private func resolvedModelType(for agentType: AgentType, userSelected: ModelType) -> ModelType {

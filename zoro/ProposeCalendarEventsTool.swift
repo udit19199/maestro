@@ -6,6 +6,7 @@
 import Foundation
 import FoundationModels
 
+@MainActor
 struct ProposeCalendarEventsTool: Tool {
     let name = "propose_calendar_events"
     let description = "Propose one or more calendar events for user confirmation. Does not create events until the user confirms in chat."
