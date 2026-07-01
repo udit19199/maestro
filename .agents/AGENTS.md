@@ -235,3 +235,6 @@ Setup guide: `reference/gmail-setup.md`
 ### Test target
 - `zoroTests` — run with ⌘U in Xcode; includes `GmailParsingTests` for offline parsing coverage
 
+### Issue tracking (Linear)
+- Feature inventory and Linear setup guide: `reference/linear-setup.md`
+
