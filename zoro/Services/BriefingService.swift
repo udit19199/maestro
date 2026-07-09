@@ -14,10 +14,80 @@ final class BriefingService: ObservableObject {
     @Published private(set) var yesterdayRecap = "No recap yet — your briefing will populate as you use Zoro."
     @Published private(set) var todayCalendarSummary = "Loading calendar…"
     @Published private(set) var suggestions: [String] = []
+    @Published private(set) var inboxDigest = ""
+    @Published private(set) var priorityUnread: [BriefingMailItem] = []
+    @Published private(set) var inboxUnreadTotal = 0
+    @Published private(set) var pendingCleanupCount = 0
+    @Published private(set) var pendingCalendarProposalCount = 0
+    @Published private(set) var inboxState: BriefingInboxState = .loading
     @Published private(set) var lastRefreshedAt: Date?
     @Published private(set) var isRefreshing = false
 
-    private var refreshTimer: Timer?
+    /// Syncs inbox from MailManager; digest uses Foundation Models when available, else template fallback.
+    private func refreshInboxSection() async {
+        let mail = MailManager.shared
+        let accounts = mail.configuredAccounts()
+
+        guard !accounts.isEmpty else {
+            inboxState = .noAccounts
+            inboxDigest = ""
+            priorityUnread = []
+            inboxUnreadTotal = 0
+            pendingCleanupCount = 0
+            return
+        }
+
+        inboxState = .loading
+        await mail.syncAllAccounts(limitPerAccount: 50)
+
+        if let error = mail.lastError {
+            inboxState = .error(message: error)
+        } else if mail.priorityUnread.isEmpty && mail.inboxUnreadTotal == 0 {
+            inboxState = .empty(message: "No unread mail across your connected accounts.")
+        } else {
+            inboxState = .loaded
+        }
+
+        priorityUnread = mail.priorityUnread
+        inboxUnreadTotal = mail.inboxUnreadTotal
+        pendingCleanupCount = mail.pendingCleanupCount
+
+        let calendarProposals = await EmailCalendarDetector.scanForProposals(
+            summaries: mail.allUnreadSummaries,
+            providers: mail.allProviders()
+        )
+        if !calendarProposals.isEmpty {
+            mergeCalendarProposals(calendarProposals)
+        }
+        pendingCalendarProposalCount = WorkspaceManager.shared.pendingCalendarProposals.count
+
+        var digest = await BriefingMailDigestGenerator.generate(from: mail.allUnreadSummaries)
+        if pendingCalendarProposalCount > 0 {
+            let suffix = " · \(pendingCalendarProposalCount) event\(pendingCalendarProposalCount == 1 ? "" : "s") to confirm"
+            if !digest.contains("to confirm") {
+                digest += suffix
+            }
+        }
+        inboxDigest = digest
+    }
+
+    /// Keeps cleanup CTA count in sync when CleanupReviewService scans outside a full briefing refresh.
+    func syncPendingCleanupCount(_ count: Int) {
+        pendingCleanupCount = count
+    }
+
+    private func mergeCalendarProposals(_ detected: [PlannerEventProposal]) {
+        var merged = WorkspaceManager.shared.pendingCalendarProposals
+        for proposal in detected {
+            let duplicate = merged.contains {
+                $0.title == proposal.title && $0.startDate == proposal.startDate
+            }
+            if !duplicate {
+                merged.append(proposal)
+            }
+        }
+        WorkspaceManager.shared.setPendingCalendarProposals(merged)
+    }
     private var defaultsKey: String { "briefing_refresh_interval_hours" }
 
     var refreshIntervalHours: Double {
@@ -53,8 +123,11 @@ final class BriefingService: ObservableObject {
             conversations: conversationStore.conversations,
             profile: ProfileStore.shared.profile
         )
+        await refreshInboxSection()
         lastRefreshedAt = Date()
     }
+
+    private var refreshTimer: Timer?
 
     private func restartBackgroundTimer() {
         refreshTimer?.invalidate()

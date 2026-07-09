@@ -84,7 +84,7 @@ enum AgentPrompts {
     private static let defaultToolList = """
     Tools:
     - `current_time`, `clarify`, `todo`
-    - `manage_apple_notes`, `manage_calendar_and_reminders`, `tavily_search`
+    - `manage_apple_notes`, `manage_calendar_and_reminders`, `manage_mail`, `tavily_search`
     - `update_user_memory`
     - File tools (when workspace attached): `list_directory`, `read_file`, `write_file`, `patch`, `search_files`, `run_terminal_command`, `get_process_status`
     - `send_imessage`

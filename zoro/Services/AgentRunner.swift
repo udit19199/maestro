@@ -47,6 +47,7 @@ final class AgentRunner: ObservableObject {
 
         workspace.clearResearchSteps()
         workspace.pendingCalendarProposals = []
+        workspace.pendingMailSend = nil
         workspace.activeConversationID = conversationID
         workspace.activeAgentType = conversation.agentType
         if conversation.source == .imessage {
@@ -76,6 +77,9 @@ final class AgentRunner: ObservableObject {
             to: conversationID,
             message: StoredMessage(role: .assistant, content: "Thinking...")
         )
+
+        MailReadAuditor.resetPromptState()
+        MailManager.shared.clearSessionReads()
 
         let modelType = resolvedModelType(for: conversation.agentType, userSelected: workspace.selectedModelType)
 
@@ -110,6 +114,12 @@ final class AgentRunner: ObservableObject {
 
             for try await partialContent in stream {
                 finalContent = partialContent.content
+                conversationStore.updateLastMessageContent(conversationID: conversationID, content: finalContent)
+            }
+
+            let auditedContent = MailReadAuditor.auditAssistantResponse(finalContent, userPrompt: trimmed)
+            if auditedContent != finalContent {
+                finalContent = auditedContent
                 conversationStore.updateLastMessageContent(conversationID: conversationID, content: finalContent)
             }
 
@@ -198,7 +208,8 @@ final class AgentRunner: ObservableObject {
                 AppleNotesTool(),
                 TavilySearchTool(),
                 IMessageTool(),
-                ProfileMemoryTool()
+                ProfileMemoryTool(),
+                MailTool()
             ]
         case .research:
             return [
@@ -259,6 +270,10 @@ final class AgentRunner: ObservableObject {
             if !tutoringContext.isEmpty {
                 instructions += "\n\nTutoring state for this thread:\n" + tutoringContext.joined(separator: "\n")
             }
+        }
+
+        if agentType == .default, let mailInstructions = MailManager.shared.contextualInstructions() {
+            instructions += "\n\n" + mailInstructions
         }
 
         let toolSet = tools(for: agentType)

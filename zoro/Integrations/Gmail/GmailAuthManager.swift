@@ -10,13 +10,17 @@ import AppKit
 import Combine
 import CryptoKit
 import Security
+import os
 
 enum GmailAuthError: LocalizedError {
     case missingCredentials
     case notConnected
+    case accountNotConnected(UUID)
+    case authorizationInProgress
     case authorizationFailed(String)
     case tokenRefreshFailed(String)
     case networkError(String)
+    case duplicateAccount(String)
 
     var errorDescription: String? {
         switch self {
@@ -24,12 +28,18 @@ enum GmailAuthError: LocalizedError {
             return "Gmail OAuth credentials are missing. Add your Google Cloud Client ID and Client Secret in Settings."
         case .notConnected:
             return "Gmail is not connected. Click 'Connect Gmail' in Settings to authorize access."
+        case .accountNotConnected(let accountId):
+            return "Gmail account \(accountId.uuidString) is not connected."
+        case .authorizationInProgress:
+            return "Gmail authorization is already in progress. Wait for it to finish before adding another account."
         case .authorizationFailed(let detail):
             return "Gmail authorization failed: \(detail)"
         case .tokenRefreshFailed(let detail):
             return "Failed to refresh Gmail access token: \(detail)"
         case .networkError(let detail):
             return "Gmail network error: \(detail)"
+        case .duplicateAccount(let email):
+            return "Gmail account \(email) is already connected."
         }
     }
 }
@@ -41,6 +51,9 @@ final class GmailAuthManager: ObservableObject {
     static let redirectPort: UInt16 = 8765
     static let redirectURI = "http://127.0.0.1:8765/"
 
+    private static let clientIdKey = "gmail_client_id"
+    private static let clientSecretKey = "gmail_client_secret"
+
     private static let scopes = [
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.send",
@@ -51,39 +64,75 @@ final class GmailAuthManager: ObservableObject {
     @Published var connectedEmail: String? = nil
     @Published var isAuthorizing: Bool = false
 
+    private let logger = Logger(subsystem: "com.zoro.mail", category: "GmailAuthManager")
+
     private init() {
-        isConnected = KeychainHelper.retrieve(key: "gmail_refresh_token") != nil
+        refreshLocalConnectionState()
+        removeLegacyKeysIfMigrated()
     }
 
+    // MARK: - Connection state
+
     func refreshConnectionStatus() async {
-        guard KeychainHelper.retrieve(key: "gmail_refresh_token") != nil else {
+        refreshLocalConnectionState()
+        removeLegacyKeysIfMigrated()
+
+        guard let accountId = primaryConnectedAccountId() else {
             isConnected = false
             connectedEmail = nil
             return
         }
 
         do {
-            let token = try await getValidAccessToken()
-            connectedEmail = try await fetchProfileEmail(accessToken: token)
+            let token = try await getValidAccessToken(accountId: accountId)
+            let email = try await fetchProfileEmail(accessToken: token)
+            connectedEmail = email
             isConnected = true
+
+            if let account = MailAccountStore.shared.account(id: accountId), account.email != email {
+                var updated = account
+                updated.email = email
+                if updated.displayName == "Gmail" || updated.displayName.isEmpty {
+                    updated.displayName = email
+                }
+                MailAccountStore.shared.updateAccount(updated)
+            }
+
             Task { await GmailManager.shared.refreshSnapshot() }
         } catch {
-            isConnected = KeychainHelper.retrieve(key: "gmail_refresh_token") != nil
-            connectedEmail = nil
+            refreshLocalConnectionState()
         }
     }
 
-    func connect() async throws {
-        guard let clientId = KeychainHelper.retrieve(key: "gmail_client_id"),
-              let clientSecret = KeychainHelper.retrieve(key: "gmail_client_secret"),
+    func isAccountConnected(_ accountId: UUID) -> Bool {
+        guard MailAccountStore.shared.account(id: accountId)?.provider == .gmail else { return false }
+        return MailAccountKeychain.gmailRefreshToken(for: accountId) != nil
+    }
+
+    func connectedGmailAccountIds() -> [UUID] {
+        MailAccountStore.shared.accounts
+            .filter { $0.provider == .gmail && isAccountConnected($0.id) }
+            .map(\.id)
+    }
+
+    /// Adds a Gmail account via OAuth. Re-authorizing an existing email updates its tokens.
+    @discardableResult
+    func connectAccount() async throws -> MailAccount {
+        guard let clientId = KeychainHelper.retrieve(key: Self.clientIdKey),
+              let clientSecret = KeychainHelper.retrieve(key: Self.clientSecretKey),
               !clientId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !clientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GmailAuthError.missingCredentials
         }
 
+        guard !isAuthorizing else {
+            throw GmailAuthError.authorizationInProgress
+        }
+
         isAuthorizing = true
         defer { isAuthorizing = false }
 
+        let pendingAccountId = UUID()
         let state = UUID().uuidString
         let codeVerifier = Self.generateCodeVerifier()
         let codeChallenge = Self.codeChallenge(for: codeVerifier)
@@ -115,47 +164,82 @@ final class GmailAuthManager: ObservableObject {
             code: code,
             clientId: clientId,
             clientSecret: clientSecret,
-            codeVerifier: codeVerifier
+            codeVerifier: codeVerifier,
+            accountId: pendingAccountId
         )
 
-        let token = try await getValidAccessToken()
-        connectedEmail = try await fetchProfileEmail(accessToken: token)
-        isConnected = true
+        let token = try await getValidAccessToken(accountId: pendingAccountId)
+        let email = try await fetchProfileEmail(accessToken: token)
+
+        let account = reconcileAccount(
+            pendingAccountId: pendingAccountId,
+            email: email
+        )
+
+        refreshLocalConnectionState()
+        removeLegacyKeysIfMigrated()
+
         Task {
             await GmailManager.shared.refreshSnapshot()
             await MainActor.run { WorkspaceManager.shared.invalidateSessionsForConfigChange() }
         }
+
+        return account
     }
 
-    func disconnect() {
-        KeychainHelper.delete(key: "gmail_refresh_token")
-        KeychainHelper.delete(key: "gmail_access_token")
-        KeychainHelper.delete(key: "gmail_token_expiry")
-        isConnected = false
-        connectedEmail = nil
-        Task { @MainActor in
+    /// Legacy entry point — adds another Gmail account (same as `connectAccount()`).
+    func connect() async throws {
+        _ = try await connectAccount()
+    }
+
+    func disconnect(accountId: UUID) {
+        MailAccountKeychain.deleteGmailCredentials(for: accountId)
+        MailAccountStore.shared.removeAccount(id: accountId)
+        refreshLocalConnectionState()
+
+        if !isConnected {
             GmailManager.shared.unreadCount = nil
             GmailManager.shared.inboxPreview = []
             GmailManager.shared.stopAutoRefresh()
-            WorkspaceManager.shared.invalidateSessionsForConfigChange()
         }
+
+        WorkspaceManager.shared.invalidateSessionsForConfigChange()
     }
 
-    func getValidAccessToken() async throws -> String {
-        if let accessToken = KeychainHelper.retrieve(key: "gmail_access_token"),
-           let expiryString = KeychainHelper.retrieve(key: "gmail_token_expiry"),
-           let expiry = Double(expiryString),
-           Date().timeIntervalSince1970 < expiry - 60 {
+    /// Disconnects all Gmail accounts (legacy single-account API).
+    func disconnect() {
+        let accountIds = connectedGmailAccountIds()
+        for accountId in accountIds {
+            MailAccountKeychain.deleteGmailCredentials(for: accountId)
+            MailAccountStore.shared.removeAccount(id: accountId)
+        }
+        isConnected = false
+        connectedEmail = nil
+        GmailManager.shared.unreadCount = nil
+        GmailManager.shared.inboxPreview = []
+        GmailManager.shared.stopAutoRefresh()
+        WorkspaceManager.shared.invalidateSessionsForConfigChange()
+    }
+
+    func getValidAccessToken(accountId: UUID) async throws -> String {
+        guard isAccountConnected(accountId)
+            || MailAccountKeychain.gmailRefreshToken(for: accountId) != nil else {
+            throw GmailAuthError.accountNotConnected(accountId)
+        }
+
+        if let accessToken = MailAccountKeychain.gmailAccessToken(for: accountId),
+           let expiry = MailAccountKeychain.gmailTokenExpiry(for: accountId),
+           Date() < expiry.addingTimeInterval(-60) {
             return accessToken
         }
 
-        guard let refreshToken = KeychainHelper.retrieve(key: "gmail_refresh_token"),
+        guard let refreshToken = MailAccountKeychain.gmailRefreshToken(for: accountId),
               !refreshToken.isEmpty else {
-            throw GmailAuthError.notConnected
+            throw GmailAuthError.accountNotConnected(accountId)
         }
 
-        guard let clientId = KeychainHelper.retrieve(key: "gmail_client_id"),
-              let clientSecret = KeychainHelper.retrieve(key: "gmail_client_secret") else {
+        guard let clientId = KeychainHelper.retrieve(key: Self.clientIdKey),
+              let clientSecret = KeychainHelper.retrieve(key: Self.clientSecretKey) else {
             throw GmailAuthError.missingCredentials
         }
 
@@ -185,11 +269,101 @@ final class GmailAuthManager: ObservableObject {
         }
 
         let tokenResponse = try JSONDecoder().decode(GmailTokenResponse.self, from: data)
-        storeAccessToken(tokenResponse.accessToken, expiresIn: tokenResponse.expiresIn)
+        storeAccessToken(tokenResponse.accessToken, expiresIn: tokenResponse.expiresIn, accountId: accountId)
+        removeLegacyKeysIfMigrated()
         return tokenResponse.accessToken
     }
 
-    private func exchangeCodeForTokens(code: String, clientId: String, clientSecret: String, codeVerifier: String) async throws {
+    // MARK: - Private
+
+    private func refreshLocalConnectionState() {
+        let connected = connectedGmailAccounts()
+        isConnected = !connected.isEmpty
+        connectedEmail = connected.first?.email.nilIfEmpty
+    }
+
+    private func connectedGmailAccounts() -> [MailAccount] {
+        MailAccountStore.shared.accounts.filter { account in
+            account.provider == .gmail && MailAccountKeychain.gmailRefreshToken(for: account.id) != nil
+        }
+    }
+
+    private func primaryConnectedAccountId() -> UUID? {
+        connectedGmailAccounts().first?.id
+    }
+
+    private func reconcileAccount(pendingAccountId: UUID, email: String) -> MailAccount {
+        if let existing = MailAccountStore.shared.accounts.first(where: {
+            $0.provider == .gmail && $0.email.caseInsensitiveCompare(email) == .orderedSame
+        }) {
+            if pendingAccountId != existing.id {
+                moveGmailCredentials(from: pendingAccountId, to: existing.id)
+            }
+            var updated = existing
+            updated.email = email
+            if updated.displayName == "Gmail" || updated.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                updated.displayName = email
+            }
+            MailAccountStore.shared.updateAccount(updated)
+            return updated
+        }
+
+        if let placeholder = MailAccountStore.shared.accounts.first(where: {
+            $0.id == pendingAccountId || ($0.provider == .gmail && $0.email.isEmpty)
+        }) {
+            var updated = placeholder
+            updated.email = email
+            updated.displayName = email
+            MailAccountStore.shared.updateAccount(updated)
+            return updated
+        }
+
+        let account = MailAccount(
+            id: pendingAccountId,
+            email: email,
+            displayName: email,
+            provider: .gmail,
+            isEnabled: true
+        )
+        MailAccountStore.shared.addAccount(account)
+        return account
+    }
+
+    private func moveGmailCredentials(from sourceId: UUID, to destinationId: UUID) {
+        if let refresh = MailAccountKeychain.gmailRefreshToken(for: sourceId) {
+            MailAccountKeychain.saveGmailRefreshToken(refresh, accountId: destinationId)
+        }
+        if let access = MailAccountKeychain.gmailAccessToken(for: sourceId) {
+            MailAccountKeychain.saveGmailAccessToken(access, accountId: destinationId)
+        }
+        if let expiry = MailAccountKeychain.gmailTokenExpiry(for: sourceId) {
+            MailAccountKeychain.saveGmailTokenExpiry(expiry, accountId: destinationId)
+        }
+        MailAccountKeychain.deleteGmailCredentials(for: sourceId)
+    }
+
+    private func removeLegacyKeysIfMigrated() {
+        guard MailAccountKeychain.hasLegacyGmailRefreshToken else { return }
+
+        let gmailAccounts = MailAccountStore.shared.accounts.filter { $0.provider == .gmail }
+        guard !gmailAccounts.isEmpty else { return }
+
+        let allMigrated = gmailAccounts.allSatisfy {
+            MailAccountKeychain.gmailRefreshToken(for: $0.id) != nil
+        }
+        guard allMigrated else { return }
+
+        MailAccountKeychain.removeLegacyGmailKeys()
+        logger.info("Removed legacy flat gmail_* keychain keys after multi-account migration")
+    }
+
+    private func exchangeCodeForTokens(
+        code: String,
+        clientId: String,
+        clientSecret: String,
+        codeVerifier: String,
+        accountId: UUID
+    ) async throws {
         var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -218,17 +392,17 @@ final class GmailAuthManager: ObservableObject {
         }
 
         let tokenResponse = try JSONDecoder().decode(GmailTokenResponse.self, from: data)
-        storeAccessToken(tokenResponse.accessToken, expiresIn: tokenResponse.expiresIn)
+        storeAccessToken(tokenResponse.accessToken, expiresIn: tokenResponse.expiresIn, accountId: accountId)
 
         if let refreshToken = tokenResponse.refreshToken {
-            KeychainHelper.save(key: "gmail_refresh_token", value: refreshToken)
+            MailAccountKeychain.saveGmailRefreshToken(refreshToken, accountId: accountId)
         }
     }
 
-    private func storeAccessToken(_ token: String, expiresIn: Int) {
-        KeychainHelper.save(key: "gmail_access_token", value: token)
-        let expiry = Date().timeIntervalSince1970 + Double(expiresIn)
-        KeychainHelper.save(key: "gmail_token_expiry", value: String(expiry))
+    private func storeAccessToken(_ token: String, expiresIn: Int, accountId: UUID) {
+        MailAccountKeychain.saveGmailAccessToken(token, accountId: accountId)
+        let expiry = Date().addingTimeInterval(Double(expiresIn))
+        MailAccountKeychain.saveGmailTokenExpiry(expiry, accountId: accountId)
     }
 
     private func fetchProfileEmail(accessToken: String) async throws -> String {
@@ -261,6 +435,13 @@ final class GmailAuthManager: ObservableObject {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

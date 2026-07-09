@@ -39,6 +39,8 @@ struct SettingsView: View {
         TabView {
             generalTab
                 .tabItem { Label("General", systemImage: "gearshape") }
+            mailTab
+                .tabItem { Label("Mail", systemImage: "envelope") }
             memoryTab
                 .tabItem { Label("Memory", systemImage: "brain.head.profile") }
         }
@@ -279,6 +281,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var mailTab: some View {
+        SettingsMailAccountsSection()
     }
 
     private var memoryTab: some View {

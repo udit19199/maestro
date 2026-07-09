@@ -26,26 +26,33 @@ struct zoroApp: App {
         }
 
         MenuBarExtra("Zoro", systemImage: "bubble.left.and.bubble.right") {
-            Button("Open Zoro") {
-                AppDelegate.activateMainWindow()
-            }
-            Button("New Chat") {
-                NotificationCenter.default.post(name: .zoroNewChat, object: nil)
-            }
-            Divider()
-            Button("Settings…") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            }
-            Divider()
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: .command)
+            MenuBarContent()
         }
 
         Settings {
             SettingsView()
         }
+    }
+}
+
+private struct MenuBarContent: View {
+    var body: some View {
+        Button("Open Zoro") {
+            AppDelegate.activateMainWindow()
+        }
+        Button("New Chat") {
+            NotificationCenter.default.post(name: .zoroNewChat, object: nil)
+        }
+        Divider()
+        Button("Settings…") {
+            openZoroSettings()
+        }
+        .keyboardShortcut(",", modifiers: .command)
+        Divider()
+        Button("Quit") {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q", modifiers: .command)
     }
 }
 

@@ -9,8 +9,10 @@ struct BriefingHomeView: View {
     @ObservedObject private var conversationStore = ConversationStore.shared
     @ObservedObject private var agentRunner = AgentRunner.shared
     @ObservedObject private var briefingService = BriefingService.shared
+    @ObservedObject private var cleanupService = CleanupReviewService.shared
 
     @State private var prompt = ""
+    @State private var showCleanupReview = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +38,26 @@ struct BriefingHomeView: View {
 
                     briefingSection(title: "Yesterday", content: briefingService.yesterdayRecap)
 
+                    BriefingInboxSection(
+                        digest: briefingService.inboxDigest,
+                        items: briefingService.priorityUnread,
+                        unreadTotal: briefingService.inboxUnreadTotal,
+                        pendingCleanupCount: briefingService.pendingCleanupCount,
+                        state: briefingService.inboxState,
+                        onSelectItem: { item in
+                            prompt = item.composerPrompt
+                        },
+                        onReviewCleanup: {
+                            Task {
+                                await cleanupService.scanCandidates()
+                                showCleanupReview = true
+                            }
+                        },
+                        onConnectAccounts: {
+                            openZoroSettings()
+                        }
+                    )
+
                     briefingSection(title: "Today", content: briefingService.todayCalendarSummary)
 
                     suggestionsSection
@@ -58,6 +80,22 @@ struct BriefingHomeView: View {
         }
         .task {
             await briefingService.refresh()
+        }
+        .sheet(isPresented: $showCleanupReview) {
+            CleanupReviewSheet(
+                items: cleanupService.pendingItems,
+                isArchiving: cleanupService.isArchiving,
+                onArchiveAll: {
+                    Task {
+                        await cleanupService.archiveAll()
+                        await briefingService.refresh()
+                        showCleanupReview = false
+                    }
+                },
+                onSkip: {
+                    showCleanupReview = false
+                }
+            )
         }
     }
 

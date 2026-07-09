@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         BriefingService.shared.startBackgroundRefresh()
+        CleanupReviewService.shared.startWeeklySchedule()
     }
 
     static func applyDockVisibility(hide: Bool) {

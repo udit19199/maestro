@@ -85,7 +85,7 @@ Hybrid system:
 
 - **Default agent** → user-selected backend (Apple Intelligence by default). UI label: **General**.
 - **Research, Planner, Teach** → OpenAI when an OpenAI API key is configured; Apple Intelligence as fallback
-- **Available backends:** Apple Intelligence (on-device), Private Cloud Compute, OpenAI (`OpenAILanguageModel.swift`), Codex/ChatGPT subscription (`CodexLanguageModel.swift`), Claude (`ClaudeForFoundationModels` SPM), Gemini (`GeminiLanguageModel.swift`)
+- **Available backends:** Apple Intelligence (on-device), Private Cloud Compute, OpenAI (`LanguageModels/OpenAILanguageModel.swift`), Codex/ChatGPT subscription (`LanguageModels/CodexLanguageModel.swift`), Claude (`ClaudeForFoundationModels` SPM), Gemini (`LanguageModels/GeminiLanguageModel.swift`)
 
 ## Core Flows
 

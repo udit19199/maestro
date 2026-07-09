@@ -27,6 +27,7 @@ class WorkspaceManager: ObservableObject {
     
     @Published var selectedModelType: ModelType = .system
     @Published var pendingCalendarProposals: [PlannerEventProposal] = []
+    @Published var pendingMailSend: PendingMailSendRequest?
     @Published var activeClarificationQuestion: String? = nil
 
     var clarifyContinuation: CheckedContinuation<String, Never>? = nil
@@ -59,6 +60,7 @@ class WorkspaceManager: ObservableObject {
         activeTodos = []
         clearResearchSteps()
         pendingCalendarProposals = []
+        pendingMailSend = nil
         activeConversationID = nil
         activeAgentType = nil
         isIMessageContext = false
@@ -72,6 +74,14 @@ class WorkspaceManager: ObservableObject {
 
     func clearPendingCalendarProposals() {
         pendingCalendarProposals = []
+    }
+
+    func setPendingMailSend(_ pending: PendingMailSendRequest) {
+        pendingMailSend = pending
+    }
+
+    func clearPendingMailSend() {
+        pendingMailSend = nil
     }
 
     

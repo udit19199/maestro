@@ -10,6 +10,7 @@ import SwiftUI
 struct ConversationSidebarView: View {
     @Binding var showNewChatSheet: Bool
     @ObservedObject private var conversationStore = ConversationStore.shared
+    @State private var isSettingsHovering = false
 
     var body: some View {
         List(selection: $conversationStore.selectedConversationID) {
@@ -49,6 +50,9 @@ struct ConversationSidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Zoro")
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            settingsFooter
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -58,6 +62,40 @@ struct ConversationSidebarView: View {
                 }
                 .help("New chat")
             }
+        }
+    }
+
+    private var settingsFooter: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                openZoroSettings()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 13))
+                        .frame(width: 18)
+                    Text("Settings")
+                        .font(.body)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(isSettingsHovering ? 0.08 : 0))
+                )
+            }
+            .buttonStyle(.plain)
+            .onHover { isSettingsHovering = $0 }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .help("Open Settings — connect email accounts, models, and memory")
+            .accessibilityLabel("Settings")
+            .accessibilityHint("Connect email accounts, choose a model, and edit memory")
         }
     }
 

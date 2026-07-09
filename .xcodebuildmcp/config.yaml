@@ -1,0 +1,11 @@
+schemaVersion: 1
+enabledWorkflows:
+  - macos
+  - project-discovery
+  - coverage
+  - utilities
+sessionDefaults:
+  projectPath: "./zoro.xcodeproj"
+  scheme: "zoro"
+  platform: "macOS"
+  configuration: "Debug"
