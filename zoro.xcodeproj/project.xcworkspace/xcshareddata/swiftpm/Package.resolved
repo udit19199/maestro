@@ -1,5 +1,5 @@
 {
-  "originHash" : "aebe9424a82c621fc44324d97bc3037b9789a0e6bd00d62a9e01d75a1f0223e5",
+  "originHash" : "575874111fe6b2d77a84694dfd2d7ffd46d0875471f8566786a7fcbb10da9363",
   "pins" : [
     {
       "identity" : "claudeforfoundationmodels",
@@ -8,6 +8,41 @@
       "state" : {
         "revision" : "f47c8aad2d94773857182f54cd11d41e21266382",
         "version" : "0.1.2"
+      }
+    },
+    {
+      "identity" : "ctemplate",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jsflax/ctemplate/",
+      "state" : {
+        "branch" : "master",
+        "revision" : "0a57d6df8e4c13b4730689493d7b83556ace4925"
+      }
+    },
+    {
+      "identity" : "libetpan",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jsflax/libetpan/",
+      "state" : {
+        "branch" : "master",
+        "revision" : "62931a67c91671110def6c42827376f47b106d84"
+      }
+    },
+    {
+      "identity" : "mailcore2",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jsflax/mailcore2",
+      "state" : {
+        "revision" : "38a6d37ddcc4c8bd877d8904068169f725468f0a"
+      }
+    },
+    {
+      "identity" : "tidy-html5",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jsflax/tidy-html5/",
+      "state" : {
+        "branch" : "master",
+        "revision" : "d7a0c39c314683be796ccd2133ed79001c0a048c"
       }
     }
   ],

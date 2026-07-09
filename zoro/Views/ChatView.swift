@@ -16,6 +16,7 @@ struct ChatView: View {
     @State private var prompt = ""
     @State private var handoffSuggestion: AgentHandoffDetector.Suggestion?
     @State private var isApplyingCalendarEvents = false
+    @State private var isSendingMail = false
 
     private var conversation: Conversation? {
         conversationStore.conversation(id: conversationID)
@@ -36,6 +37,15 @@ struct ChatView: View {
 
                 if !workspace.pendingCalendarProposals.isEmpty, conversation.agentType == .planner {
                     plannerConfirmationPanel
+                }
+
+                if let pendingMailSend = workspace.pendingMailSend {
+                    MailSendConfirmPanel(
+                        pending: pendingMailSend.panelModel,
+                        isSending: isSendingMail,
+                        onSend: { confirmMailSend(pendingMailSend) },
+                        onCancel: { workspace.clearPendingMailSend() }
+                    )
                 }
 
                 if !workspace.activeTodos.isEmpty {
@@ -73,7 +83,7 @@ struct ChatView: View {
                 .font(.subheadline)
             Spacer()
             Button("Review") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                openZoroSettings()
                 profileStore.dismissMemoryBanner()
             }
             .buttonStyle(.borderless)
@@ -333,6 +343,39 @@ struct ChatView: View {
                     message: StoredMessage(role: .assistant, content: result)
                 )
                 isApplyingCalendarEvents = false
+            }
+        }
+    }
+
+    private func confirmMailSend(_ pending: PendingMailSendRequest) {
+        guard !isSendingMail else { return }
+        isSendingMail = true
+
+        Task {
+            do {
+                try await MailManager.shared.confirmPendingSend(pending)
+                await MainActor.run {
+                    workspace.clearPendingMailSend()
+                    conversationStore.appendMessage(
+                        to: conversationID,
+                        message: StoredMessage(
+                            role: .assistant,
+                            content: "Email sent to \(pending.to) from \(pending.accountLabel)."
+                        )
+                    )
+                    isSendingMail = false
+                }
+            } catch {
+                await MainActor.run {
+                    conversationStore.appendMessage(
+                        to: conversationID,
+                        message: StoredMessage(
+                            role: .assistant,
+                            content: "Failed to send email: \(error.localizedDescription)"
+                        )
+                    )
+                    isSendingMail = false
+                }
             }
         }
     }

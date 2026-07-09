@@ -58,6 +58,14 @@ enum SecurityPolicy {
         "reply_to_thread"
     ]
 
+    private static let iMessageDeniedMailActions: Set<String> = [
+        "send_email",
+        "reply_to_message",
+        "create_draft",
+        "archive_message",
+        "mark_read"
+    ]
+
     private static let iMessageAllowedTools: Set<String> = [
         "list_directory",
         "read_file",
@@ -68,7 +76,8 @@ enum SecurityPolicy {
         "manage_apple_notes",
         "tavily_search",
         "send_imessage",
-        "manage_gmail"
+        "manage_gmail",
+        "manage_mail"
     ]
 
     private static let iMessageDeniedNoteActions: Set<String> = [
@@ -122,6 +131,15 @@ enum SecurityPolicy {
             return true
         case .iMessage:
             return !iMessageDeniedGmailActions.contains(action)
+        }
+    }
+
+    static func isMailActionPermitted(_ action: String, context: AgentExecutionContext) -> Bool {
+        switch context {
+        case .local:
+            return true
+        case .iMessage:
+            return !iMessageDeniedMailActions.contains(action)
         }
     }
 

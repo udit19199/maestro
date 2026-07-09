@@ -39,8 +39,16 @@ final class GmailManager: ObservableObject {
 
     private init() {}
 
+    private func primaryGmailAccountId() -> UUID? {
+        MailAccountStore.shared.accounts.first { account in
+            account.provider == .gmail
+                && MailAccountKeychain.gmailRefreshToken(for: account.id) != nil
+        }?.id
+    }
+
     func refreshSnapshot() async {
-        guard GmailAuthManager.shared.isConnected else {
+        guard GmailAuthManager.shared.isConnected,
+              let accountId = primaryGmailAccountId() else {
             stopAutoRefresh()
             unreadCount = nil
             inboxPreview = []
@@ -54,7 +62,7 @@ final class GmailManager: ObservableObject {
         defer { isSyncing = false }
 
         do {
-            let service = try await GmailService.makeAuthenticated()
+            let service = try await GmailService.makeAuthenticated(accountId: accountId)
             let status = try await service.fetchStatus()
             unreadCount = status.unreadInbox
 

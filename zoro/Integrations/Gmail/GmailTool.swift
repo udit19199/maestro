@@ -90,7 +90,12 @@ struct GmailTool: Tool {
 
         let service: GmailService
         do {
-            service = try await GmailService.makeAuthenticated()
+            guard let accountId = MailAccountStore.shared.accounts.first(where: {
+                $0.provider == .gmail && MailAccountKeychain.gmailRefreshToken(for: $0.id) != nil
+            })?.id else {
+                return "Error: Gmail is not connected."
+            }
+            service = try await GmailService.makeAuthenticated(accountId: accountId)
         } catch {
             return "Error: \(error.localizedDescription)"
         }

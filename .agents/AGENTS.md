@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, Anthropic Claude (via `ClaudeForFoundationModels`), Google Gemini, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar). Gmail backend code exists but agent access is **not wired yet** (see Gmail section).
+Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, Anthropic Claude (via `ClaudeForFoundationModels`), Google Gemini, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar, Mail). Multi-account mail (Gmail OAuth + IMAP) is wired via `manage_mail` on the General agent (see Mail section).
 
 - **Platform**: macOS 27.0+
 - **Language**: Swift 5 (uses modern Swift concurrency: `async/await`, `Task`, `CheckedContinuation`)
@@ -48,7 +48,8 @@ zoro/
 ├── Models/                  # Conversation, StoredMessage, AgentType
 ├── Tools/                   # Tool protocol implementations + SecurityPolicy
 ├── Integrations/
-│   ├── Gmail/               # OAuth, REST client, tool, auditor (wiring incomplete)
+│   ├── Gmail/               # OAuth, REST client (wrapped by MailProvider)
+│   ├── Mail/                # Multi-account MailManager, manage_mail tool, auditor
 │   └── IMessage/            # Send tool + SQLite listener
 ├── LanguageModels/          # OpenAI, Gemini, Codex backends and auth helpers
 ├── Support/
@@ -97,12 +98,12 @@ Tools registered in `AgentRunner.tools(for:)` (names are the tool `name` constan
 
 | Agent | Tools |
 |---|---|
-| **General** (`default`) | `run_terminal_command`, `get_process_status`, `list_directory`, `read_file`, `write_file`, `patch`, `search_files`, `current_time`, `clarify`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `update_user_memory` |
+| **General** (`default`) | `run_terminal_command`, `get_process_status`, `list_directory`, `read_file`, `write_file`, `patch`, `search_files`, `current_time`, `clarify`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `update_user_memory`, `manage_mail` |
 | **Research** | `tavily_search`, `manage_apple_notes`, `current_time`, `clarify`, `todo`, `update_user_memory`, `read_file`, `search_files` |
 | **Planner** | `manage_calendar_and_reminders`, `propose_calendar_events`, `current_time`, `clarify`, `todo`, `update_user_memory`, `manage_apple_notes` |
 | **Teach** | `update_tutoring_progress`, `update_user_memory`, `clarify`, `manage_apple_notes`, `current_time` |
 
-System instructions for each agent live in `AgentPrompts.swift`. `GmailTool` (`manage_gmail`) is **not** registered yet.
+System instructions for each agent live in `AgentPrompts.swift`. Mail is exposed via `MailTool` (`manage_mail`) on the General agent; legacy `GmailTool` (`manage_gmail`) remains in the repo but is not registered.
 
 ### Persistence
 
@@ -132,6 +133,11 @@ Native Settings scene with two tabs:
 **Memory**
 - Editable freeform profile notes
 - Saved facts (add, edit, delete; sources: auto, manual, planner, teach)
+
+**Mail**
+- Gmail OAuth app credentials and per-account connect/disconnect
+- IMAP accounts (Namecheap Private Email, iCloud presets)
+- Sync all, weekly cleanup schedule
 
 
 ## Coding Conventions
@@ -221,7 +227,7 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
-- **Unit tests**: The `zoroTests` target includes `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
+- **Unit tests**: The `zoroTests` target includes `Mail/*Tests`, `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
 
 ---
 
@@ -231,6 +237,23 @@ There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, App
 - Select the `zoro` scheme and a macOS destination.
 - Build and run (`⌘R`).
 - On first launch, configure a **model backend** in Settings (⌘,). Attach a workspace folder in Settings → Workspace **only if** you need file or terminal tools; briefing and chat work without one.
+
+---
+
+## XcodeBuild MCP (local macOS agents)
+
+When Cursor runs on a **macOS host with Xcode 16+**, use the project-scoped **XcodeBuildMCP** server (`.cursor/mcp.json`) and `.xcodebuildmcp/config.yaml` session defaults (`zoro` scheme, `./zoro.xcodeproj`, macOS `Debug`).
+
+**Typical verification flow (via MCP tools):**
+1. `macos build` — compile the app.
+2. `macos test` — run `zoroTests` (mail ranking/cleanup/auditor, Gmail parsing, Codex auth/request tests).
+3. `macos build-and-run` — build and launch the app (requires GUI session for SwiftUI).
+
+Session defaults are preconfigured; override only if switching scheme or configuration. After editing `.xcodebuildmcp/config.yaml`, reload MCP servers in Cursor.
+
+**Prerequisites:** Full Xcode installed (not Command Line Tools only). If `xcode-select -p` shows `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer` (or `/Applications/Xcode.app/...` for stable Xcode). `.cursor/mcp.json` sets `DEVELOPER_DIR` to Xcode-beta so MCP builds work even before you fix `xcode-select`. Accept license if needed (`sudo xcodebuild -license accept`). Shared `zoro` scheme lives at `zoro.xcodeproj/xcshareddata/xcschemes/zoro.xcscheme`. First build needs network for SPM (`ClaudeForFoundationModels`).
+
+**MCP tool names:** `build_macos`, `test_macos`, `build_run_macos`, `session_show_defaults` (call first each session).
 
 ---
 
@@ -258,7 +281,7 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 4. **Command Prefix:** Messages must start with `zoro:` (case-insensitive). Agent routing prefixes (`research:`, `plan:`, `teach:`) come after the optional passcode.
 5. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
 6. **Global Rate Limiting:** Remote execution is capped at 5 commands per minute **app-wide** (not per sender).
-7. **Runtime tool restrictions:** iMessage sessions use the same `AgentRunner` tool registration as local chat. Tools in `SecurityPolicy`'s `iMessageAllowedTools` whitelist may run remotely: `list_directory`, `read_file`, `search_files`, `current_time`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `manage_gmail`. Other tools fail via `WorkspaceManager.toolPermissionError()` when they check permissions. `ClarifyTool` refuses to suspend on iMessage. Notes and calendar actions have additional action-level restrictions via `isNotesActionPermitted()` / `isCalendarActionPermitted()`.
+7. **Runtime tool restrictions:** iMessage sessions use the same `AgentRunner` tool registration as local chat. Tools in `SecurityPolicy`'s `iMessageAllowedTools` whitelist may run remotely: `list_directory`, `read_file`, `search_files`, `current_time`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `manage_mail`. Other tools fail via `WorkspaceManager.toolPermissionError()` when they check permissions. `ClarifyTool` refuses to suspend on iMessage. Notes and calendar actions have additional action-level restrictions via `isNotesActionPermitted()` / `isCalendarActionPermitted()`.
 8. **Workspace Path Validation:** All file tools resolve paths with `SecurityPolicy.resolveWorkspacePath()` and reject absolute paths or traversal outside the workspace root.
 9. **Attachment Scoping:** iMessage attachments are only read from `~/Library/Messages/Attachments`.
 10. **Outbound iMessage Restrictions:** Remote sessions may only reply to the requester who sent the command.
@@ -273,61 +296,54 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 
 ---
 
-## Gmail Integration (First-Class)
+## Mail Integration (Multi-Account)
 
 ### Overview
-Gmail is a first-class integration — not a secondary tool. The user relies on it heavily. Design goals: complete fetches, explicit completeness flags, and anti-hallucination guardrails.
+Mail is a first-class integration across Gmail (OAuth) and IMAP (Namecheap Private Email, iCloud). Design goals: unified briefing inbox, complete fetches with explicit completeness flags, and anti-hallucination guardrails.
 
-**Implementation status:** Backend code is in the repo (`GmailAuthManager`, `GmailService`, `GmailManager`, `GmailTool`, `GmailReadAuditor`). Wiring to agents and UI is **incomplete** — see gaps below.
+**Implementation status:** Wired — `manage_mail` on General agent, Settings **Mail** tab, briefing inbox section, `MailReadAuditor` in `AgentRunner` response pipeline.
 
 | File | Purpose |
 |---|---|
-| `Integrations/Gmail/GmailAuthManager.swift` | OAuth 2.0 desktop flow; tokens in Keychain |
-| `Integrations/Gmail/GmailService.swift` | REST client; pagination; `GmailFetchReport` on every response |
-| `Integrations/Gmail/GmailManager.swift` | Inbox preview, unread count, activity log, `contextualInstructions()` |
-| `Integrations/Gmail/GmailTool.swift` | LLM-facing `manage_gmail` tool |
-| `Integrations/Gmail/GmailReadAuditor.swift` | Tracks index vs full reads within a tool session |
+| `Integrations/Mail/MailManager.swift` | Unified sync, priority ranking, session read tracking, `contextualInstructions()` |
+| `Integrations/Mail/MailTool.swift` | LLM-facing `manage_mail` tool |
+| `Integrations/Mail/MailReadAuditor.swift` | Blocks unsourced email summaries in chat |
+| `Integrations/Mail/MailAccountStore.swift` | Multi-account registry, Keychain schema, legacy Gmail migration |
+| `Integrations/Mail/GmailMailProvider.swift` | Gmail `MailProvider` adapter |
+| `Integrations/Mail/IMAP/IMAPMailProvider.swift` | IMAP provider (MailCore2) |
+| `Integrations/Gmail/GmailAuthManager.swift` | Multi-account OAuth 2.0 desktop flow |
+| `Integrations/Gmail/GmailService.swift` | Gmail REST client (per `accountId`), pagination, fetch reports |
+| `Views/Mail/SettingsMailAccountsSection.swift` | Settings Mail tab (add Gmail/IMAP, disconnect, sync) |
 
-Setup guide: `reference/gmail-setup.md`
+Setup guides: `reference/mail-setup.md`, `reference/gmail-setup.md`
 
-### Tool actions (`manage_gmail`)
-- `get_status` — account email, unread inbox, totals
-- `list_messages` / `search_messages` — **index only**; `fetchAll` defaults true (cap 250)
-- `read_message` / `read_messages` / `read_thread` — **full bodies** with `body_complete` flag
-- `read_attachment` — text and PDF attachments (PDFKit)
-- `mark_read`, `archive_message`, `star_message`, `unstar_message`, `modify_labels`, `list_labels`
-- `create_draft`, `reply_to_thread`, `send_email`, `trash_message`
+### Tool actions (`manage_mail`)
+- `get_status` — connected accounts, unread counts, sync health
+- `list_unread` / `search` — **index only** (metadata + snippets)
+- `read_message` — **full body** with `body_complete` flag
+- `archive_message`, `mark_read`
+- `create_draft`, `send_email`, `reply_to_message` — draft-only; user confirms via `MailSendConfirmPanel`
 
-### Hard read enforcement (designed behavior)
-- `GmailReadAuditor` is designed to block assistant responses that summarize email without a `read_*` call in the same turn
-- **Current wiring:** auditor records reads inside `GmailTool` only; response blocking in `ChatView` and `IMessageListener` is **not yet wired**
+### Hard read enforcement
+- `MailReadAuditor` blocks assistant responses that summarize email without a `read_message` call in the same turn
+- Wired in `AgentRunner.sendMessage()` after each assistant response
+- `MailManager.contextualInstructions()` injected in `AgentRunner.getOrCreateSession()` when accounts are connected
 
 ### Anti-hallucination design
-1. Every tool response includes a `=== GMAIL FETCH REPORT ===` block with `fetch_complete`, `items_fetched`, and warnings.
-2. Search/list results are explicitly marked INDEX ONLY — agent must call read_* before summarizing.
-3. When Gmail is connected, `GmailManager.contextualInstructions()` should be appended to session instructions.
-4. Connect/disconnect should call `WorkspaceManager.invalidateSessionsForConfigChange()` so new sessions pick up Gmail rules.
-
-**Current wiring gaps:**
-- `GmailTool` is **not registered** in `AgentRunner.tools(for:)` — agents cannot call `manage_gmail` yet
-- `GmailManager.contextualInstructions()` is **not injected** in `AgentRunner.getOrCreateSession()`
-- **No Gmail section** in `SettingsView.swift` (OAuth connect/disconnect UI pending)
-- **No header badge or inbox preview** in the current SwiftUI views
+1. Every tool response includes a `=== MAIL FETCH REPORT ===` block with `fetch_complete`, `items_fetched`, and warnings.
+2. Search/list results are explicitly marked INDEX ONLY — agent must call `read_message` before summarizing.
+3. Connect/disconnect calls `WorkspaceManager.invalidateSessionsForConfigChange()` so new sessions pick up mail rules.
 
 ### Security & limits (`SecurityPolicy.swift`)
-- `gmailPageSize` = 25, `maxGmailMessagesPerOperation` = 250, `maxGmailBatchRead` = 20
-- `maxGmailBodyBytes` = 1 MB, `gmailMaxRetries` = 5 (429/5xx backoff)
-- iMessage remote: read/search allowed; send/trash denied via `isGmailActionPermitted()`
+- `manage_mail` in iMessage allowed tools; send/archive denied remotely via `isMailActionPermitted()`
+- Gmail limits preserved: page size 25, max 250 messages/operation, batch read 20, body 1 MB, 5 retries
 
 ### OAuth redirect URI
 `http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
 
-### Known gaps (not yet implemented)
-- Wire `GmailTool` into `AgentRunner`, Settings UI, and response auditor (`GmailReadAuditor.auditAssistantResponse` is not called from chat)
-- Image attachment OCR — text/PDF only today
-- Background push via Gmail Pub/Sub (requires public HTTPS endpoint)
-- Gmail header badge, inbox preview panel, and activity log UI
+### Legacy Gmail code
+`GmailTool` (`manage_gmail`), `GmailManager`, and `GmailReadAuditor` remain for reference; production path uses `MailTool` / `MailManager` / `MailReadAuditor`.
 
 ### Test target
-- `zoroTests` — run with ⌘U in Xcode; includes `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`
+- `zoroTests` — run with ⌘U in Xcode; includes `Mail/MailPriorityRankerTests`, `Mail/CleanupHeuristicsTests`, `Mail/EmailCalendarDetectorTests`, `Mail/MailReadAuditorTests`, `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`
 

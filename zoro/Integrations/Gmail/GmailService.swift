@@ -81,12 +81,13 @@ struct GmailStatus {
     let historyId: String
 }
 
-struct GmailService {
+struct GmailService: Sendable {
+    let accountId: UUID
     let accessToken: String
 
-    static func makeAuthenticated() async throws -> GmailService {
-        let token = try await GmailAuthManager.shared.getValidAccessToken()
-        return GmailService(accessToken: token)
+    static func makeAuthenticated(accountId: UUID) async throws -> GmailService {
+        let token = try await GmailAuthManager.shared.getValidAccessToken(accountId: accountId)
+        return GmailService(accountId: accountId, accessToken: token)
     }
 
     // MARK: - Status
@@ -112,6 +113,44 @@ struct GmailService {
             hardCap: maxItems
         )
         return try await fetchSummaries(for: refs.refs)
+    }
+
+    func fetchUnreadSummaries(
+        limit: Int,
+        pageToken: String? = nil
+    ) async throws -> (summaries: [GmailMessageSummary], fetchComplete: Bool, nextPageToken: String?) {
+        let page = try await fetchMessageRefs(
+            query: "in:inbox is:unread",
+            labelIds: nil,
+            pageToken: pageToken,
+            maxResults: min(limit, SecurityPolicy.gmailPageSize),
+            hardCap: limit
+        )
+        let summaries = try await fetchSummaries(for: page.refs)
+        return (summaries, page.fetchComplete, page.nextPageToken)
+    }
+
+    func searchSummaries(
+        query: String,
+        limit: Int,
+        pageToken: String? = nil
+    ) async throws -> (summaries: [GmailMessageSummary], fetchComplete: Bool, nextPageToken: String?) {
+        let page = try await fetchMessageRefs(
+            query: query,
+            labelIds: nil,
+            pageToken: pageToken,
+            maxResults: min(limit, SecurityPolicy.gmailPageSize),
+            hardCap: limit
+        )
+        let summaries = try await fetchSummaries(for: page.refs)
+        return (summaries, page.fetchComplete, page.nextPageToken)
+    }
+
+    func fetchMessageContent(id: String) async throws -> GmailMessageContent {
+        var components = URLComponents(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(id)")!
+        components.queryItems = [URLQueryItem(name: "format", value: "full")]
+        let detail = try await decode(GmailMessageDetail.self, from: components.url!)
+        return contentFromDetail(detail)
     }
 
     // MARK: - List / Search
@@ -461,6 +500,18 @@ struct GmailService {
     }
 
     func createDraft(to: String, subject: String, body: String, cc: String?, bcc: String?, threadId: String?) async throws -> String {
+        let draft = try await createDraftRecord(to: to, subject: subject, body: body, cc: cc, bcc: bcc, threadId: threadId)
+        return "Successfully created draft (draft_id: \(draft.draftId), message_id: \(draft.messageId))."
+    }
+
+    func createDraftRecord(
+        to: String,
+        subject: String,
+        body: String,
+        cc: String?,
+        bcc: String?,
+        threadId: String?
+    ) async throws -> (draftId: String, messageId: String) {
         let rawMessage = buildRawEmail(to: to, subject: subject, body: body, cc: cc, bcc: bcc)
         let encoded = GmailParsing.base64URLEncode(Data(rawMessage.utf8))
         var messagePayload: [String: Any] = ["raw": encoded]
@@ -476,10 +527,21 @@ struct GmailService {
         guard response.statusCode == 200 else {
             throw GmailAuthError.networkError("Create draft failed: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
         }
-        if let draft = try? JSONDecoder().decode(GmailDraftResponse.self, from: data) {
-            return "Successfully created draft (draft_id: \(draft.id), message_id: \(draft.message.id))."
+        let draft = try JSONDecoder().decode(GmailDraftResponse.self, from: data)
+        return (draft.id, draft.message.id)
+    }
+
+    func sendDraft(draftId: String) async throws {
+        var request = URLRequest(url: URL(string: "https://gmail.googleapis.com/gmail/v1/users/me/drafts/\(draftId)/send")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+
+        let (data, response) = try await performRequest(request)
+        guard response.statusCode == 200 else {
+            throw GmailAuthError.networkError("Send draft failed: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
         }
-        return "Successfully created draft."
     }
 
     func replyToThread(threadId: String, inReplyToMessageId: String, to: String, subject: String, body: String) async throws -> String {
@@ -585,13 +647,6 @@ struct GmailService {
             summaries.append(summaryFromDetail(detail))
         }
         return summaries
-    }
-
-    private func fetchMessageContent(id: String) async throws -> GmailMessageContent {
-        var components = URLComponents(string: "https://gmail.googleapis.com/gmail/v1/users/me/messages/\(id)")!
-        components.queryItems = [URLQueryItem(name: "format", value: "full")]
-        let detail = try await decode(GmailMessageDetail.self, from: components.url!)
-        return contentFromDetail(detail)
     }
 
     private func countUnreadInbox() async throws -> Int {

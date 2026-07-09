@@ -28,15 +28,18 @@ Zoro starts a local callback server on port **8765** during Connect Gmail.
 
 ## 3. Connect in Zoro
 
-> **Note:** Gmail backend code exists in the repo, but the Settings UI for OAuth connect/disconnect is **not yet wired**. The steps below describe the intended flow once Settings includes a Gmail Integration section.
+> **Note:** Gmail backend supports **multiple accounts** via `MailAccountStore`. Settings UI for add/disconnect is **not yet wired**.
 
 1. Open Zoro → open **Settings** (⌘, or menu bar → Settings…).
 2. Go to the **Gmail Integration** section (pending implementation in `SettingsView.swift`).
-3. Paste **Client ID** and **Client Secret** (saved to Keychain automatically).
+3. Paste **Client ID** and **Client Secret** (saved to Keychain as shared OAuth app credentials).
 4. Click **Connect Gmail** — your browser opens for Google sign-in.
-5. After approval, return to Zoro. When wired, the app will show your email and unread count.
+5. Repeat step 4 to add additional Gmail accounts. Only one OAuth flow runs at a time on port 8765.
+6. After approval, return to Zoro. When wired, Settings will list each connected account.
 
 Until the Settings UI ships, OAuth credentials can only be configured once the Gmail section is added to Settings.
+
+See [mail-setup.md](mail-setup.md) for multi-account Keychain schema and migration notes.
 
 ## 4. Verify
 
@@ -50,8 +53,10 @@ Try these prompts:
 
 | File | Role |
 |---|---|
-| `zoro/Integrations/Gmail/GmailAuthManager.swift` | OAuth flow, token refresh, Keychain storage |
-| `zoro/Integrations/Gmail/GmailService.swift` | Gmail REST API client, pagination, fetch reports |
+| `zoro/Integrations/Gmail/GmailAuthManager.swift` | Multi-account OAuth flow, per-account token refresh, Keychain storage |
+| `zoro/Integrations/Gmail/GmailService.swift` | Gmail REST API client (per `accountId`), pagination, fetch reports |
+| `zoro/Integrations/Mail/GmailMailProvider.swift` | `MailProvider` adapter for Gmail |
+| `zoro/Integrations/Mail/MailAccountStore.swift` | Account registry and legacy token migration |
 | `zoro/Integrations/Gmail/GmailManager.swift` | Inbox snapshot, activity log, agent context injection |
 | `zoro/Integrations/Gmail/GmailTool.swift` | `manage_gmail` tool exposed to the LLM |
 | `zoro/Integrations/Gmail/GmailReadAuditor.swift` | Tracks index vs full reads (response blocking not yet wired in chat) |
