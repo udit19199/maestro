@@ -12,6 +12,7 @@ import FoundationModels
 struct AppleNotesTool: Tool {
     let name = "manage_apple_notes"
     let description = "Create, read, search, list, and append to notes inside the native macOS Apple Notes app. Output will sync to iCloud automatically."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -32,14 +33,13 @@ struct AppleNotesTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        let workspace = WorkspaceManager.shared
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
 
-        let context = await workspace.currentExecutionContext
-        guard SecurityPolicy.isNotesActionPermitted(arguments.action, context: context) else {
-            return "Error: Apple Notes action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(context))."
+        guard SecurityPolicy.isNotesActionPermitted(arguments.action, context: executionContext) else {
+            return "Error: Apple Notes action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(executionContext))."
         }
 
         switch arguments.action {
@@ -47,7 +47,7 @@ struct AppleNotesTool: Tool {
             guard let title = arguments.title, let body = arguments.body else {
                 return "Error: Missing required fields ('title', 'body') for 'create_note'."
             }
-            let stepId = await workspace.addResearchStep("Creating Apple Note: \(title)")
+            let stepId = workspace.addResearchStep("Creating Apple Note: \(title)")
             let htmlBody = convertToHTML(title: title, markdown: body)
             let script = """
             tell application "Notes"
@@ -59,10 +59,10 @@ struct AppleNotesTool: Tool {
             """
             do {
                 let noteId = try await runAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
-                await workspace.completeResearchStep(id: stepId)
+                workspace.completeResearchStep(id: stepId)
                 return "Successfully created note '\(title)' (ID: \(noteId))"
             } catch {
-                await workspace.failResearchStep(id: stepId)
+                workspace.failResearchStep(id: stepId)
                 return "Error creating note: \(error.localizedDescription)"
             }
 
@@ -126,7 +126,7 @@ struct AppleNotesTool: Tool {
             guard let noteId = arguments.noteId, let bodyToAppend = arguments.body else {
                 return "Error: Missing required fields ('noteId', 'body') for 'append_note'."
             }
-            let stepId = await workspace.addResearchStep("Appending to Apple Note ID: \(noteId)")
+            let stepId = workspace.addResearchStep("Appending to Apple Note ID: \(noteId)")
             let readScript = """
             tell application "Notes"
                 return body of note id "\(SecurityPolicy.escapeForAppleScript(noteId))"
@@ -143,10 +143,10 @@ struct AppleNotesTool: Tool {
                 end tell
                 """
                 _ = try await runAppleScript(writeScript)
-                await workspace.completeResearchStep(id: stepId)
+                workspace.completeResearchStep(id: stepId)
                 return "Successfully appended content to note."
             } catch {
-                await workspace.failResearchStep(id: stepId)
+                workspace.failResearchStep(id: stepId)
                 return "Error appending to note: \(error.localizedDescription)"
             }
 

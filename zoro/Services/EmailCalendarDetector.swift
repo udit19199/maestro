@@ -195,7 +195,7 @@ enum EmailCalendarDetector {
     }
 
     private static func unfoldICSLines(_ content: String) -> [String] {
-        var rawLines = content
+        let rawLines = content
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")

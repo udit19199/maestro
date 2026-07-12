@@ -45,7 +45,8 @@ enum IMAPMessageID: Sendable, Equatable {
     case inbox(uid: UInt32)
     case folder(path: String, uid: UInt32)
 
-    var encoded: String {
+    /// Pure encoding; nonisolated so `IMAPClient` (a non-MainActor actor) can use it.
+    nonisolated var encoded: String {
         switch self {
         case .inbox(let uid):
             return "imap://INBOX/\(uid)"
@@ -69,7 +70,7 @@ enum IMAPMessageID: Sendable, Equatable {
         return .folder(path: folder, uid: uid)
     }
 
-    var folderPath: String {
+    nonisolated var folderPath: String {
         switch self {
         case .inbox:
             return "INBOX"
@@ -78,7 +79,7 @@ enum IMAPMessageID: Sendable, Equatable {
         }
     }
 
-    var uid: UInt32 {
+    nonisolated var uid: UInt32 {
         switch self {
         case .inbox(let uid), .folder(_, let uid):
             return uid
@@ -403,7 +404,7 @@ actor IMAPClient {
                 ? .inbox(uid: uid)
                 : .folder(path: folder, uid: uid)
             let from = formatAddress(message.header.from)
-            let to = formatAddressList(message.header.to as? [MCOAddress])
+            let to = formatAddressList(message.header.to)
             let subject = message.header.subject ?? "(no subject)"
             let snippet = makeSnippet(subject: subject, from: from)
             let receivedAt = message.header.date ?? message.header.receivedDate ?? Date()
@@ -487,7 +488,7 @@ actor IMAPClient {
         isUnread: Bool
     ) -> MailMessageSummary {
         let from = formatAddress(parser.header.from)
-        let to = formatAddressList(parser.header.to as? [MCOAddress])
+        let to = formatAddressList(parser.header.to)
         let subject = parser.header.subject ?? "(no subject)"
         return MailMessageSummary(
             id: messageID.encoded,
@@ -507,8 +508,13 @@ actor IMAPClient {
         address?.mailbox ?? address?.displayName ?? "unknown"
     }
 
-    private func formatAddressList(_ addresses: [MCOAddress]?) -> String {
-        addresses?.compactMap { $0.mailbox ?? $0.displayName }.joined(separator: ", ") ?? ""
+    /// MailCore exposes `to` as an untyped array; normalize without useless downcasts.
+    private func formatAddressList(_ addresses: [Any]?) -> String {
+        guard let addresses else { return "" }
+        return addresses.compactMap { item -> String? in
+            guard let address = item as? MCOAddress else { return nil }
+            return address.mailbox ?? address.displayName
+        }.joined(separator: ", ")
     }
 
     private func makeSnippet(subject: String, from: String) -> String {
@@ -552,12 +558,13 @@ actor IMAPClient {
     // MARK: - Async bridge
 
     private func runFoldersOperation(
-        _ start: (@escaping (Error?, [MCOIMAPFolder]?) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?, [MCOIMAPFolder]?) -> Void) -> Void)
     ) async throws -> [MCOIMAPFolder] {
-        try await withCheckedThrowingContinuation { continuation in
+        let accountId = configuration.accountId
+        return try await withCheckedThrowingContinuation { continuation in
             start { error, folders in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume(returning: folders ?? [])
@@ -566,12 +573,13 @@ actor IMAPClient {
     }
 
     private func runSearchOperation(
-        _ start: (@escaping (Error?, MCOIndexSet?) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?, MCOIndexSet?) -> Void) -> Void)
     ) async throws -> MCOIndexSet {
-        try await withCheckedThrowingContinuation { continuation in
+        let accountId = configuration.accountId
+        return try await withCheckedThrowingContinuation { continuation in
             start { error, indexSet in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume(returning: indexSet ?? MCOIndexSet())
@@ -580,12 +588,13 @@ actor IMAPClient {
     }
 
     private func runFetchMessagesOperation(
-        _ start: (@escaping (Error?, [MCOIMAPMessage]?, MCOIndexSet?) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?, [MCOIMAPMessage]?, MCOIndexSet?) -> Void) -> Void)
     ) async throws -> [MCOIMAPMessage] {
-        try await withCheckedThrowingContinuation { continuation in
+        let accountId = configuration.accountId
+        return try await withCheckedThrowingContinuation { continuation in
             start { error, messages, _ in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume(returning: messages ?? [])
@@ -594,12 +603,13 @@ actor IMAPClient {
     }
 
     private func runDataOperation(
-        _ start: (@escaping (Error?, Data?) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?, Data?) -> Void) -> Void)
     ) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
+        let accountId = configuration.accountId
+        return try await withCheckedThrowingContinuation { continuation in
             start { error, data in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume(returning: data ?? Data())
@@ -608,12 +618,13 @@ actor IMAPClient {
     }
 
     private func runAppendOperation(
-        _ start: (@escaping (Error?, UInt32) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?, UInt32) -> Void) -> Void)
     ) async throws -> UInt32 {
-        try await withCheckedThrowingContinuation { continuation in
+        let accountId = configuration.accountId
+        return try await withCheckedThrowingContinuation { continuation in
             start { error, createdUID in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume(returning: createdUID)
@@ -622,12 +633,13 @@ actor IMAPClient {
     }
 
     private func runMoveOperation(
-        _ start: (@escaping (Error?, [AnyHashable: Any]?) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?, [AnyHashable: Any]?) -> Void) -> Void)
     ) async throws {
+        let accountId = configuration.accountId
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             start { error, _ in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume()
@@ -636,12 +648,13 @@ actor IMAPClient {
     }
 
     private func runVoidOperation(
-        _ start: (@escaping (Error?) -> Void) -> Void
+        _ start: (@escaping @Sendable (@escaping @Sendable (Error?) -> Void) -> Void)
     ) async throws {
+        let accountId = configuration.accountId
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             start { error in
                 if let error {
-                    continuation.resume(throwing: self.mapError(error))
+                    continuation.resume(throwing: Self.mapError(error, accountId: accountId))
                     return
                 }
                 continuation.resume()
@@ -649,11 +662,11 @@ actor IMAPClient {
         }
     }
 
-    private func mapError(_ error: Error) -> MailError {
+    nonisolated private static func mapError(_ error: Error, accountId: UUID) -> MailError {
         let nsError = error as NSError
         let detail = nsError.localizedDescription
         if nsError.domain == "MCOErrorDomain", nsError.code == 5 {
-            return .authenticationFailed(accountId: configuration.accountId, detail: detail)
+            return .authenticationFailed(accountId: accountId, detail: detail)
         }
         return .providerError(.imap, detail)
     }

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, Anthropic Claude (via `ClaudeForFoundationModels`), Google Gemini, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar, Mail). Multi-account mail (Gmail OAuth + IMAP) is wired via `manage_mail` on the General agent (see Mail section).
+Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar, Mail). Multi-account mail (Gmail OAuth + IMAP) is wired via `manage_mail` on the General agent (see Mail section).
 
 - **Platform**: macOS 27.0+
 - **Language**: Swift 5 (uses modern Swift concurrency: `async/await`, `Task`, `CheckedContinuation`)
@@ -19,7 +19,7 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 - **Menu bar primary:** Dock hidden by default (Settings toggle); login item on by default. Background briefing refresh while the app runs.
 - **Four agents, one per thread:** General (default), Research, Planner, Teach. Pick at chat creation or General suggests handoff. No mid-chat switching in v1.
 - **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review, edit, and delete in Settings Memory panel (undo list not implemented).
-- **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription), Claude, Gemini.
+- **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription).
 - **iMessage:** Each inbound `zoro:` command → new conversation. Format: `zoro: [passcode ]research:|plan:|teach: <command>` (passcode optional). Thread continuation deferred Phase 2.
 - **See also:** `docs/PRODUCT.md`, `docs/DESIGN.md`
 
@@ -51,7 +51,7 @@ zoro/
 │   ├── Gmail/               # OAuth, REST client (wrapped by MailProvider)
 │   ├── Mail/                # Multi-account MailManager, manage_mail tool, auditor
 │   └── IMessage/            # Send tool + SQLite listener
-├── LanguageModels/          # OpenAI, Gemini, Codex backends and auth helpers
+├── LanguageModels/          # OpenAI and Codex backends and auth helpers
 ├── Support/
 │   ├── WorkspaceManager.swift  # Runtime state (workspace, todos, processes, execution context)
 │   └── KeychainHelper.swift      # macOS Keychain wrapper for API keys / OAuth tokens
@@ -74,7 +74,7 @@ zoro/
    - A nested `@Generable struct Arguments` with `@Guide` annotations on each field
    - A `func call(arguments:) async throws -> String` implementation
 
-6. **Tool registration**: Tools are registered in `AgentRunner.tools(for:)` per agent type. iMessage remote restrictions are enforced separately via `SecurityPolicy.isToolPermitted()`.
+6. **Tool registration**: Tools are built by `ToolFactory` with a baked `AgentExecutionContext` from the conversation. Remote restrictions use `SecurityPolicy` inside each tool — not process globals.
 
 7. **Lazy session creation**: Sessions are created lazily in `AgentRunner.getOrCreateSession(conversationID:agentType:modelType:)` and reset on model or config changes.
 
@@ -94,7 +94,7 @@ User input (BriefingHomeView / ChatView / IMessageListener)
 
 ### Agent tool matrix
 
-Tools registered in `AgentRunner.tools(for:)` (names are the tool `name` constants):
+Tools registered via `ToolFactory.tools(for:executionContext:)` (names are the tool `name` constants):
 
 | Agent | Tools |
 |---|---|
@@ -103,7 +103,7 @@ Tools registered in `AgentRunner.tools(for:)` (names are the tool `name` constan
 | **Planner** | `manage_calendar_and_reminders`, `propose_calendar_events`, `current_time`, `clarify`, `todo`, `update_user_memory`, `manage_apple_notes` |
 | **Teach** | `update_tutoring_progress`, `update_user_memory`, `clarify`, `manage_apple_notes`, `current_time` |
 
-System instructions for each agent live in `AgentPrompts.swift`. Mail is exposed via `MailTool` (`manage_mail`) on the General agent; legacy `GmailTool` (`manage_gmail`) remains in the repo but is not registered.
+System instructions for each agent live in `AgentPrompts.swift`. Mail is `manage_mail` on General. Tools bake `AgentExecutionContext` at construction; irreversible actions stage for user confirmation in `PendingActionsBar`.
 
 ### Persistence
 
@@ -115,7 +115,7 @@ All on-disk data lives under `~/Library/Application Support/Zoro/`:
 | `profile.json` | `ProfileStore` | Structured memory facts and freeform notes |
 | `profile.md` | `ProfileStore` | Human-readable mirror of profile (also used for migration) |
 
-Keychain (via `KeychainHelper`): `anthropic_api_key`, `gemini_api_key`, `openai_api_key`, `tavily_api_key`, `imessage_passcode`, Gmail OAuth tokens, Codex refresh token.
+Keychain (via `KeychainHelper`): `openai_api_key`, `tavily_api_key`, `imessage_passcode`, Gmail OAuth tokens, Codex refresh token.
 
 UserDefaults (selected keys): `selected_model_type`, `codex_model_name`, `hide_dock_icon`, `imessage_listener_enabled`, `imessage_sender_whitelist`, `briefing_refresh_interval_hours` (default 3).
 
@@ -124,7 +124,7 @@ UserDefaults (selected keys): `selected_model_type`, `codex_model_name`, `hide_d
 Native Settings scene with two tabs:
 
 **General**
-- **Model** — backend picker (Apple Intelligence, PCC, Codex, Claude, Gemini, OpenAI); conditional API key fields; Codex sign-in / CLI import / device code; Tavily key; availability status
+- **Model** — backend picker (Apple Intelligence, PCC, Codex, OpenAI); conditional API key fields; Codex sign-in / CLI import / device code; Tavily key; availability status
 - **Briefing** — background refresh interval (2 / 3 / 4 hours)
 - **Appearance** — hide Dock icon; launch at login
 - **Workspace** — optional folder attach for file/shell tools
@@ -165,7 +165,7 @@ Native Settings scene with two tabs:
 - Use `withCheckedContinuation` / `withCheckedThrowingContinuation` for bridging callback-based APIs (e.g., EventKit permissions, ClarifyTool suspension).
 
 ### Secrets Management
-- API keys (Anthropic, Gemini, OpenAI, Tavily), Codex tokens, iMessage passcode, and Gmail OAuth credentials/tokens are stored in the macOS Keychain via `KeychainHelper`, never hardcoded or stored in files.
+- API keys (OpenAI, Tavily), Codex tokens, iMessage passcode, and Gmail OAuth credentials/tokens are stored in the macOS Keychain via `KeychainHelper`, never hardcoded or stored in files.
 - Keys are loaded on `onAppear` and saved on `onChange` of the corresponding text fields.
 
 ---
@@ -211,20 +211,19 @@ When adding a new tool to Zoro, follow these steps:
 |---|---|
 | `SwiftUI` | UI layer |
 | `FoundationModels` | Apple's on-device LLM framework (Tool protocol, LanguageModelSession, SystemLanguageModel) |
-| `ClaudeForFoundationModels` | Anthropic Claude integration via FoundationModels API |
 | `Foundation` | Core types, Process, FileManager, URLSession |
 | `Security` | macOS Keychain access (SecItemAdd, SecItemCopyMatching) |
 | `EventKit` | Calendar events and reminders |
 | `Combine` | `@Published` / `ObservableObject` reactivity |
 
-There is **one SPM dependency**: `ClaudeForFoundationModels`. Gmail, Tavily, Apple Notes, and iMessage integrations use direct HTTP (`URLSession`) or AppleScript — no Google SDK.
+SPM dependency: `MailCore2` (IMAP). Gmail, Tavily, Apple Notes, and iMessage integrations use direct HTTP (`URLSession`) or AppleScript — no Google SDK.
 
 ---
 
 ## Things to Watch Out For
 
-- **Workspace Scoping**: All file operations (read, write, list, search, patch) resolve paths via `SecurityPolicy.resolveWorkspacePath()` relative to `WorkspaceManager.shared.workspaceURL`. Absolute paths and workspace escapes are rejected.
-- **Process Execution**: Terminal commands run via `/bin/zsh -c` with the workspace as the current directory. Background processes are tracked by `WorkspaceManager.activeProcesses`.
+- **Workspace Scoping**: File operations resolve paths via `SecurityPolicy.resolveWorkspacePath()` (symlink-safe) relative to the attached workspace. Absolute paths and workspace escapes are rejected. Workspace folders use security-scoped bookmarks.
+- **Process Execution**: Terminal commands are staged for user confirmation, then run via `/bin/zsh -c` with the workspace as cwd. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
 - **Unit tests**: The `zoroTests` target includes `Mail/*Tests`, `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
@@ -251,7 +250,7 @@ When Cursor runs on a **macOS host with Xcode 16+**, use the project-scoped **Xc
 
 Session defaults are preconfigured; override only if switching scheme or configuration. After editing `.xcodebuildmcp/config.yaml`, reload MCP servers in Cursor.
 
-**Prerequisites:** Full Xcode installed (not Command Line Tools only). If `xcode-select -p` shows `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer` (or `/Applications/Xcode.app/...` for stable Xcode). `.cursor/mcp.json` sets `DEVELOPER_DIR` to Xcode-beta so MCP builds work even before you fix `xcode-select`. Accept license if needed (`sudo xcodebuild -license accept`). Shared `zoro` scheme lives at `zoro.xcodeproj/xcshareddata/xcschemes/zoro.xcscheme`. First build needs network for SPM (`ClaudeForFoundationModels`).
+**Prerequisites:** Full Xcode installed (not Command Line Tools only). If `xcode-select -p` shows `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer` (or `/Applications/Xcode.app/...` for stable Xcode). `.cursor/mcp.json` sets `DEVELOPER_DIR` to Xcode-beta so MCP builds work even before you fix `xcode-select`. Accept license if needed (`sudo xcodebuild -license accept`). Shared `zoro` scheme lives at `zoro.xcodeproj/xcshareddata/xcschemes/zoro.xcscheme`. First build needs network for SPM (`MailCore2`).
 
 **MCP tool names:** `build_macos`, `test_macos`, `build_run_macos`, `session_show_defaults` (call first each session).
 
@@ -259,10 +258,10 @@ Session defaults are preconfigured; override only if switching scheme or configu
 
 ## Cursor Cloud specific instructions
 
-- **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Zoro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `ClaudeForFoundationModels` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
+- **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Zoro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `MailCore2` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
 - A Swift-for-Linux toolchain (`swift` 6.x via `swiftly`) *can* be installed, but it cannot compile this app: `swiftc -typecheck` fails immediately with `no such module 'FoundationModels'` / `no such module 'SwiftUI'`. Do not waste time trying to make it build on Linux.
 - There is a **`zoroTests` unit test target** (XCTest), but it only runs on macOS via Xcode. There is **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
-- To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure a Claude or Gemini API key in Settings (⌘,), stored in the macOS Keychain). Xcode auto-resolves the `ClaudeForFoundationModels` SPM dependency on first build (network required once).
+- To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure OpenAI or Codex in Settings (⌘,), stored in the macOS Keychain). Xcode auto-resolves the `MailCore2` SPM dependency on first build (network required once).
 - Practical implication for cloud agents: scope work here to **code reading/editing and static reasoning**. Any verification that requires compiling or running the app must be done by the user on macOS.
 
 ---
@@ -281,14 +280,14 @@ Zoro supports a native, zero-dependency iMessage listener that allows remote com
 4. **Command Prefix:** Messages must start with `zoro:` (case-insensitive). Agent routing prefixes (`research:`, `plan:`, `teach:`) come after the optional passcode.
 5. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
 6. **Global Rate Limiting:** Remote execution is capped at 5 commands per minute **app-wide** (not per sender).
-7. **Runtime tool restrictions:** iMessage sessions use the same `AgentRunner` tool registration as local chat. Tools in `SecurityPolicy`'s `iMessageAllowedTools` whitelist may run remotely: `list_directory`, `read_file`, `search_files`, `current_time`, `todo`, `manage_calendar_and_reminders`, `manage_apple_notes`, `tavily_search`, `send_imessage`, `manage_mail`. Other tools fail via `WorkspaceManager.toolPermissionError()` when they check permissions. `ClarifyTool` refuses to suspend on iMessage. Notes and calendar actions have additional action-level restrictions via `isNotesActionPermitted()` / `isCalendarActionPermitted()`.
-8. **Workspace Path Validation:** All file tools resolve paths with `SecurityPolicy.resolveWorkspacePath()` and reject absolute paths or traversal outside the workspace root.
+7. **Runtime tool restrictions:** Tools are built by `ToolFactory` with a baked `AgentExecutionContext`. Remote allowlist is read-oriented (files, mail read, calendar list, notes read, search, todos). Shell, memory writes, and free-fire model send are denied. Listener replies use `IMessageDirectSender`. Local email/iMessage/shell/calendar mutations stage for `PendingActionsBar`. `ClarifyTool` refuses to suspend on iMessage. Notes/calendar action-level gates apply via `SecurityPolicy`.
+8. **Workspace Path Validation:** File tools use symlink-safe `SecurityPolicy.resolveWorkspacePath()`; absolute paths and escapes are rejected. Workspace uses security-scoped bookmarks.
 9. **Attachment Scoping:** iMessage attachments are only read from `~/Library/Messages/Attachments`.
-10. **Outbound iMessage Restrictions:** Remote sessions may only reply to the requester who sent the command.
+10. **Outbound iMessage Restrictions:** Model `send_imessage` stages for confirm; remote model send tool is not allowlisted. App-controlled replies go only to the stored requester.
 11. **AppleScript + HTML Escaping:** User/LLM content injected into AppleScript or Notes HTML passes through `SecurityPolicy.escapeForAppleScript()` / `SecurityPolicy.escapeHTML()`.
 12. **Resource Limits:** File reads, shell output, shell timeouts, and iMessage reply length are capped in `SecurityPolicy.swift`.
 13. **Keychain Hardening:** Secrets use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
-14. **Gemini API Key Transport:** Gemini requests send the API key via the `x-goog-api-key` header, not the URL query string.
+14. **API Key Transport:** API keys are sent via standard Authorization headers, never URL query strings.
 
 ### Code Constraints
 - **Zero-Dependency Policy:** Do not install or require external communication CLIs (like `imsg`), Node, or Python bridges. All parsing (including binary plist/attributedBody decoding) must be done natively in Swift.
@@ -322,7 +321,7 @@ Setup guides: `reference/mail-setup.md`, `reference/gmail-setup.md`
 - `list_unread` / `search` — **index only** (metadata + snippets)
 - `read_message` — **full body** with `body_complete` flag
 - `archive_message`, `mark_read`
-- `create_draft`, `send_email`, `reply_to_message` — draft-only; user confirms via `MailSendConfirmPanel`
+- `create_draft`, `send_email`, `reply_to_message` — draft-only; user confirms via `PendingActionsBar`
 
 ### Hard read enforcement
 - `MailReadAuditor` blocks assistant responses that summarize email without a `read_message` call in the same turn
@@ -341,9 +340,6 @@ Setup guides: `reference/mail-setup.md`, `reference/gmail-setup.md`
 ### OAuth redirect URI
 `http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
 
-### Legacy Gmail code
-`GmailTool` (`manage_gmail`), `GmailManager`, and `GmailReadAuditor` remain for reference; production path uses `MailTool` / `MailManager` / `MailReadAuditor`.
-
 ### Test target
-- `zoroTests` — run with ⌘U in Xcode; includes `Mail/MailPriorityRankerTests`, `Mail/CleanupHeuristicsTests`, `Mail/EmailCalendarDetectorTests`, `Mail/MailReadAuditorTests`, `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`
+- `zoroTests` — run with ⌘U in Xcode; includes Mail/*, Gmail parsing, Codex, and `Security/SecurityPolicyTests`
 

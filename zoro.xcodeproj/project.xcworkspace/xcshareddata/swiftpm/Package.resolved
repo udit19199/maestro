@@ -2,15 +2,6 @@
   "originHash" : "575874111fe6b2d77a84694dfd2d7ffd46d0875471f8566786a7fcbb10da9363",
   "pins" : [
     {
-      "identity" : "claudeforfoundationmodels",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/anthropics/ClaudeForFoundationModels.git",
-      "state" : {
-        "revision" : "f47c8aad2d94773857182f54cd11d41e21266382",
-        "version" : "0.1.2"
-      }
-    },
-    {
       "identity" : "ctemplate",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jsflax/ctemplate/",

@@ -6,7 +6,6 @@
 import Foundation
 import Combine
 import FoundationModels
-import ClaudeForFoundationModels
 
 @MainActor
 final class AgentRunner: ObservableObject {
@@ -36,26 +35,37 @@ final class AgentRunner: ObservableObject {
     func sendMessage(
         conversationID: UUID,
         text: String,
-        conversationStore: ConversationStore = .shared,
-        workspace: WorkspaceManager = .shared,
+        conversationStore: ConversationStore? = nil,
+        workspace: WorkspaceManager? = nil,
         onComplete: ((String) -> Void)? = nil
     ) async {
+        // Default args cannot reference MainActor `.shared` (evaluated nonisolated).
+        let conversationStore = conversationStore ?? .shared
+        let workspace = workspace ?? .shared
+
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
         guard let conversation = conversationStore.conversation(id: conversationID) else { return }
 
         workspace.clearResearchSteps()
-        workspace.pendingCalendarProposals = []
-        workspace.pendingMailSend = nil
+        // Do not clear pending mail/iMessage/shell/calendar — those wait for user confirm.
         workspace.activeConversationID = conversationID
         workspace.activeAgentType = conversation.agentType
-        if conversation.source == .imessage {
-            workspace.isIMessageContext = true
-            workspace.currentExecutionContext = .iMessage(requester: workspace.iMessageRequester ?? "")
-        } else {
-            workspace.isIMessageContext = false
-            workspace.currentExecutionContext = .local
+
+        switch conversation.executionContext() {
+        case .failure(let securityError):
+            let message = securityError.localizedDescription
+            conversationStore.appendMessage(to: conversationID, message: StoredMessage(role: .user, content: trimmed))
+            conversationStore.appendMessage(
+                to: conversationID,
+                message: StoredMessage(role: .assistant, content: message)
+            )
+            clearActiveContext(workspace: workspace)
+            onComplete?(message)
+            return
+        case .success:
+            break
         }
 
         if let continuation = workspace.clarifyContinuation {
@@ -93,10 +103,8 @@ final class AgentRunner: ObservableObject {
 
         do {
             let activeSession = try getOrCreateSession(
-                conversationID: conversationID,
-                agentType: conversation.agentType,
-                modelType: modelType,
-                tutoringMetadata: conversation.tutoringMetadata
+                conversation: conversation,
+                modelType: modelType
             )
 
             var promptText = trimmed
@@ -176,9 +184,6 @@ final class AgentRunner: ObservableObject {
     private func clearActiveContext(workspace: WorkspaceManager) {
         workspace.activeConversationID = nil
         workspace.activeAgentType = nil
-        workspace.isIMessageContext = false
-        workspace.currentExecutionContext = .local
-        workspace.iMessageRequester = nil
     }
 
     private func resolvedModelType(for agentType: AgentType, userSelected: ModelType) -> ModelType {
@@ -190,75 +195,37 @@ final class AgentRunner: ObservableObject {
         }
     }
 
-    private func tools(for agentType: AgentType) -> [any Tool] {
-        switch agentType {
-        case .default:
-            return [
-                CommandLineTool(),
-                ProcessStatusTool(),
-                ListDirectoryTool(),
-                ReadFileTool(),
-                WriteFileTool(),
-                PatchTool(),
-                SearchFilesTool(),
-                CurrentTimeTool(),
-                ClarifyTool(),
-                TodoTool(),
-                EventKitTool(),
-                AppleNotesTool(),
-                TavilySearchTool(),
-                IMessageTool(),
-                ProfileMemoryTool(),
-                MailTool()
-            ]
-        case .research:
-            return [
-                TavilySearchTool(),
-                AppleNotesTool(),
-                CurrentTimeTool(),
-                ClarifyTool(),
-                TodoTool(),
-                ProfileMemoryTool(),
-                ReadFileTool(),
-                SearchFilesTool()
-            ]
-        case .planner:
-            return [
-                EventKitTool(),
-                ProposeCalendarEventsTool(),
-                CurrentTimeTool(),
-                ClarifyTool(),
-                TodoTool(),
-                ProfileMemoryTool(),
-                AppleNotesTool()
-            ]
-        case .teach:
-            return [
-                TeachProgressTool(),
-                ProfileMemoryTool(),
-                ClarifyTool(),
-                AppleNotesTool(),
-                CurrentTimeTool()
-            ]
-        }
-    }
-
     private func getOrCreateSession(
-        conversationID: UUID,
-        agentType: AgentType,
-        modelType: ModelType,
-        tutoringMetadata: TutoringMetadata?
+        conversation: Conversation,
+        modelType: ModelType
     ) throws -> LanguageModelSession {
+        let conversationID = conversation.id
         if let session = sessions[conversationID] {
             return session
         }
 
+        let executionContext: AgentExecutionContext
+        switch conversation.executionContext() {
+        case .failure(let securityError):
+            throw modelKeyError(securityError.localizedDescription)
+        case .success(let ctx):
+            executionContext = ctx
+        }
+
         var instructions = AgentPrompts.systemInstructions(
-            for: agentType,
+            for: conversation.agentType,
             profileContext: ProfileStore.shared.profileContextForPrompt()
         )
 
-        if agentType == .teach, let metadata = tutoringMetadata {
+        instructions += """
+
+
+        Human-in-the-loop (enforced by the app, not optional):
+        - Email, iMessage, shell commands, and calendar creates are staged for user confirmation. Never claim they were sent/run/created until the user confirms in the UI.
+        - Do not invent that a message was delivered.
+        """
+
+        if conversation.agentType == .teach, let metadata = conversation.tutoringMetadata {
             var tutoringContext: [String] = []
             if let topic = metadata.curriculumTopic { tutoringContext.append("Topic: \(topic)") }
             if let module = metadata.currentModule { tutoringContext.append("Current module: \(module)") }
@@ -272,48 +239,16 @@ final class AgentRunner: ObservableObject {
             }
         }
 
-        if agentType == .default, let mailInstructions = MailManager.shared.contextualInstructions() {
+        if conversation.agentType == .default, let mailInstructions = MailManager.shared.contextualInstructions() {
             instructions += "\n\n" + mailInstructions
         }
 
-        let toolSet = tools(for: agentType)
+        let toolSet = ToolFactory.tools(for: conversation.agentType, executionContext: executionContext)
 
         let newSession: LanguageModelSession
-        let anthropicApiKey = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
-        let geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
         let openaiApiKey = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
 
         switch modelType {
-        case .system:
-            newSession = LanguageModelSession(
-                model: SystemLanguageModel.default,
-                tools: toolSet,
-                instructions: instructions
-            )
-        case .pcc:
-            newSession = LanguageModelSession(
-                model: PrivateCloudComputeLanguageModel(),
-                tools: toolSet,
-                instructions: instructions
-            )
-        case .claude:
-            guard !anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw modelKeyError("Anthropic API Key is missing. Please enter your API Key in Settings.")
-            }
-            newSession = LanguageModelSession(
-                model: ClaudeLanguageModel(name: .sonnet4_6, auth: .apiKey(anthropicApiKey)),
-                tools: toolSet,
-                instructions: instructions
-            )
-        case .gemini:
-            guard !geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw modelKeyError("Gemini API Key is missing. Please enter your API Key in Settings.")
-            }
-            newSession = LanguageModelSession(
-                model: GeminiLanguageModel(modelName: "gemini-2.5-flash", apiKey: geminiApiKey),
-                tools: toolSet,
-                instructions: instructions
-            )
         case .openai:
             guard !openaiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw modelKeyError("OpenAI API Key is missing. Please enter your API Key in Settings.")
@@ -347,38 +282,6 @@ final class AgentRunner: ObservableObject {
 
     private func checkModelAvailability(modelType: ModelType) async -> String? {
         switch modelType {
-        case .system:
-            let status = SystemLanguageModel.default.availability
-            if case .unavailable(let reason) = status {
-                return """
-                On-Device Apple Intelligence model is not ready yet.
-
-                Reason: \(reasonDescription(for: reason))
-
-                Tip: Open Settings (⌘,) and configure OpenAI, Claude, or Gemini to test Zoro's tools immediately.
-                """
-            }
-        case .pcc:
-            let status = PrivateCloudComputeLanguageModel().availability
-            if case .unavailable(let reason) = status {
-                return """
-                Private Cloud Compute is not available.
-
-                Reason: \(reason)
-
-                Tip: Open Settings and switch to another backend.
-                """
-            }
-        case .claude:
-            let key = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
-            if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "Please enter your Anthropic API key in Settings."
-            }
-        case .gemini:
-            let key = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
-            if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "Please enter your Gemini API key in Settings."
-            }
         case .openai:
             let key = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
             if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -390,19 +293,6 @@ final class AgentRunner: ObservableObject {
             }
         }
         return nil
-    }
-
-    private func reasonDescription(for reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
-        switch reason {
-        case .modelNotReady:
-            return "Model assets are downloading/preparing. Please stay connected to Wi-Fi and power."
-        case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence is disabled. Enable it under Settings > Apple Intelligence & Siri."
-        case .deviceNotEligible:
-            return "This Mac hardware does not support Apple Intelligence."
-        @unknown default:
-            return "Unknown unavailability reason: \(String(describing: reason))"
-        }
     }
 
     private func compressConversationHistory(
@@ -420,23 +310,9 @@ final class AgentRunner: ObservableObject {
 
         do {
             let tempSession: LanguageModelSession
-            let anthropicApiKey = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
-            let geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
             let openaiApiKey = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
 
             switch modelType {
-            case .system:
-                tempSession = LanguageModelSession(model: SystemLanguageModel.default)
-            case .pcc:
-                tempSession = LanguageModelSession(model: PrivateCloudComputeLanguageModel())
-            case .claude:
-                tempSession = LanguageModelSession(
-                    model: ClaudeLanguageModel(name: .sonnet4_6, auth: .apiKey(anthropicApiKey))
-                )
-            case .gemini:
-                tempSession = LanguageModelSession(
-                    model: GeminiLanguageModel(modelName: "gemini-2.5-flash", apiKey: geminiApiKey)
-                )
             case .openai:
                 tempSession = LanguageModelSession(
                     model: OpenAILanguageModel(modelName: "gpt-4o-mini", apiKey: openaiApiKey)

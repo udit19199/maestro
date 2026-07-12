@@ -6,9 +6,9 @@
 import Foundation
 
 struct GmailMailProvider: MailProvider {
-    let accountId: UUID
+    nonisolated let accountId: UUID
 
-    init(accountId: UUID) {
+    nonisolated init(accountId: UUID) {
         self.accountId = accountId
     }
 

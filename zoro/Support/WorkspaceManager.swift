@@ -2,70 +2,63 @@
 //  WorkspaceManager.swift
 //  zoro
 //
-//  Created by Udit Agarwal on 19/06/26.
-//
 
-// Foundation is Apple's core library
-// containing essential non-UI data types, networking, and system APIs.
 import Foundation
 import Combine
 import FoundationModels
 
-// 'ObservableObject' is a protocol that allows SwiftUI to listen to this
-// object for data changes and automatically redraw the user interface.
 @MainActor
 class WorkspaceManager: ObservableObject {
-    
-    // The "Singleton" pattern: creates a single shared instance of this manager.
-    // 'static let' makes it globally accessible via `WorkspaceManager.shared`.
     static let shared = WorkspaceManager()
-    
-    // '@Published' tells SwiftUI: "If this variable changes, alert any views
-    // that are listening so they can update themselves."
-    // 'URL?' means this is an "Optional" URL. It can hold a folder path OR be 'nil' (empty).
+
     @Published var workspaceURL: URL? = nil
-    
-    @Published var selectedModelType: ModelType = .system
+
+    @Published var selectedModelType: ModelType = .openai
     @Published var pendingCalendarProposals: [PlannerEventProposal] = []
+    /// Staged side effects — only cleared on confirm/cancel, never on a new chat turn.
     @Published var pendingMailSend: PendingMailSendRequest?
+    @Published var pendingIMessageSend: PendingIMessageSend?
+    @Published var pendingShellCommand: PendingShellCommand?
+    @Published var pendingReminder: PendingReminderProposal?
+    @Published var pendingCalendarDelete: PendingCalendarDelete?
+    @Published var pendingReminderComplete: PendingReminderComplete?
     @Published var activeClarificationQuestion: String? = nil
 
     var clarifyContinuation: CheckedContinuation<String, Never>? = nil
     var activeConversationID: UUID?
     var activeAgentType: AgentType?
-    var isIMessageContext = false
 
-    var currentExecutionContext: AgentExecutionContext = .local
-    var iMessageRequester: String?
+    private init() {
+        WorkspaceBookmarkStore.shared.restoreIfNeeded(into: self)
+    }
 
     func invalidateSessionsForConfigChange() {
         AgentRunner.shared.invalidateAllSessions()
     }
 
-    func finishRemoteExecution() {
-        currentExecutionContext = .local
-        iMessageRequester = nil
-    }
-
-    func toolPermissionError(for toolName: String) -> String? {
-        guard SecurityPolicy.isToolPermitted(toolName, context: currentExecutionContext) else {
-            return "Error: Tool '\(toolName)' is not permitted in \(SecurityPolicy.contextDescription(currentExecutionContext))."
-        }
-        return nil
-    }
-
-    /// Clears ephemeral agent state and invalidates LLM sessions (messages persist in ConversationStore).
+    /// Clears ephemeral agent UI state and invalidates LLM sessions (messages persist).
     func resetSession() {
         AgentRunner.shared.invalidateAllSessions()
         activeTodos = []
         clearResearchSteps()
         pendingCalendarProposals = []
-        pendingMailSend = nil
+        // Intentionally do not clear pending outbound actions — user must confirm or cancel.
         activeConversationID = nil
         activeAgentType = nil
-        isIMessageContext = false
-        currentExecutionContext = .local
-        iMessageRequester = nil
+    }
+
+    func setWorkspaceURL(_ url: URL?) {
+        if let previous = workspaceURL {
+            previous.stopAccessingSecurityScopedResource()
+        }
+        workspaceURL = url
+        if let url {
+            _ = url.startAccessingSecurityScopedResource()
+            WorkspaceBookmarkStore.shared.save(url: url)
+        } else {
+            WorkspaceBookmarkStore.shared.clear()
+        }
+        invalidateSessionsForConfigChange()
     }
 
     func setPendingCalendarProposals(_ proposals: [PlannerEventProposal]) {
@@ -84,103 +77,132 @@ class WorkspaceManager: ObservableObject {
         pendingMailSend = nil
     }
 
-    
+    func setPendingIMessageSend(_ pending: PendingIMessageSend) {
+        pendingIMessageSend = pending
+    }
+
+    func clearPendingIMessageSend() {
+        pendingIMessageSend = nil
+    }
+
+    func setPendingShellCommand(_ pending: PendingShellCommand) {
+        pendingShellCommand = pending
+    }
+
+    func clearPendingShellCommand() {
+        pendingShellCommand = nil
+    }
+
+    func setPendingReminder(_ pending: PendingReminderProposal) {
+        pendingReminder = pending
+    }
+
+    func clearPendingReminder() {
+        pendingReminder = nil
+    }
+
+    func setPendingCalendarDelete(_ pending: PendingCalendarDelete) {
+        pendingCalendarDelete = pending
+    }
+
+    func clearPendingCalendarDelete() {
+        pendingCalendarDelete = nil
+    }
+
+    func setPendingReminderComplete(_ pending: PendingReminderComplete) {
+        pendingReminderComplete = pending
+    }
+
+    func clearPendingReminderComplete() {
+        pendingReminderComplete = nil
+    }
+
     @Generable
     struct TodoItem: Codable, Identifiable, Equatable {
         @Guide(description: "A short, unique identifier for the task step (e.g. 'step_1')")
         let id: String
-        
+
         @Guide(description: "A description of the step to perform")
         var content: String
-        
+
         @Guide(description: "Current task status: 'pending', 'in_progress', 'completed', or 'cancelled'")
         var status: String
     }
-    
+
     @Published var activeTodos: [TodoItem] = []
-    
+
     struct ResearchStep: Identifiable, Equatable {
         let id: UUID
         let title: String
-        var status: String // "in_progress", "completed", "failed"
+        var status: String
     }
-    
+
     @Published var researchSteps: [ResearchStep] = []
-    
+
     func addResearchStep(_ title: String) -> UUID {
         let id = UUID()
-        DispatchQueue.main.async {
-            self.researchSteps.append(ResearchStep(id: id, title: title, status: "in_progress"))
-        }
+        researchSteps.append(ResearchStep(id: id, title: title, status: "in_progress"))
         return id
     }
-    
+
     func completeResearchStep(id: UUID) {
-        DispatchQueue.main.async {
-            if let index = self.researchSteps.firstIndex(where: { $0.id == id }) {
-                self.researchSteps[index].status = "completed"
-            }
+        if let index = researchSteps.firstIndex(where: { $0.id == id }) {
+            researchSteps[index].status = "completed"
         }
     }
-    
+
     func failResearchStep(id: UUID) {
-        DispatchQueue.main.async {
-            if let index = self.researchSteps.firstIndex(where: { $0.id == id }) {
-                self.researchSteps[index].status = "failed"
-            }
+        if let index = researchSteps.firstIndex(where: { $0.id == id }) {
+            researchSteps[index].status = "failed"
         }
     }
-    
+
     func clearResearchSteps() {
-        DispatchQueue.main.async {
-            self.researchSteps = []
-        }
+        researchSteps = []
     }
-    
+
     func updateTodos(_ newTodos: [TodoItem], merge: Bool) -> [TodoItem] {
-        DispatchQueue.main.async {
-            if !merge {
-                self.activeTodos = newTodos
-            } else {
-                var current = self.activeTodos
-                for item in newTodos {
-                    if let idx = current.firstIndex(where: { $0.id == item.id }) {
-                        current[idx].content = item.content
-                        current[idx].status = item.status
-                    } else {
-                        current.append(item)
-                    }
+        if !merge {
+            activeTodos = newTodos
+        } else {
+            var current = activeTodos
+            for item in newTodos {
+                if let idx = current.firstIndex(where: { $0.id == item.id }) {
+                    current[idx].content = item.content
+                    current[idx].status = item.status
+                } else {
+                    current.append(item)
                 }
-                self.activeTodos = current
             }
+            activeTodos = current
         }
         return activeTodos
     }
-    
+
     struct RunningProcess {
         let id: String
         let command: String
         let process: Process
         let outputPipe: Pipe
         let startDate: Date
-        
+
         var isRunning: Bool {
             process.isRunning
         }
-        
+
         func getAvailableOutput() -> String {
             let data = outputPipe.fileHandleForReading.availableData
             return String(data: data, encoding: .utf8) ?? ""
         }
     }
-    
+
     @Published var activeProcesses: [String: RunningProcess] = [:]
-    
+
     func runCommandBackground(_ command: String) throws -> String {
         guard let workspaceURL = workspaceURL else {
             return "Error: No workspace directory selected."
         }
-        
+
         let process = Process()
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -188,9 +210,9 @@ class WorkspaceManager: ObservableObject {
         process.arguments = ["-c", command]
         process.launchPath = "/bin/zsh"
         process.currentDirectoryURL = workspaceURL
-        
+
         try process.run()
-        
+
         let taskId = "task_\(UUID().uuidString.prefix(6).lowercased())"
         let running = RunningProcess(
             id: taskId,
@@ -199,49 +221,29 @@ class WorkspaceManager: ObservableObject {
             outputPipe: pipe,
             startDate: Date()
         )
-        
-        DispatchQueue.main.async {
-            self.activeProcesses[taskId] = running
-        }
-        
+
+        activeProcesses[taskId] = running
+
         return "Command started in the background. Task ID: \(taskId)\nUse 'get_process_status' with this ID to inspect logs."
     }
-    
-    // 'async throws' means this function runs in the background (asynchronously)
-    // and can throw errors if something fails (like permission errors).
+
     func pruneTerminatedProcesses() {
         activeProcesses = activeProcesses.filter { $0.value.isRunning }
     }
 
     func runCommand(_ command: String) async throws -> String {
-        
-        // 'guard let ... else' is Swift's way of unwrapping an Optional.
-        // It says: "If workspaceURL has a value, assign it to a temporary variable.
-        // If it is nil, immediately exit the function with an error message."
         guard let workspaceURL = workspaceURL else {
             return "Error: No workspace directory selected."
         }
-        
+
         let process = Process()
-        
-        // 'Pipe' is used to capture output data stream from the process.
         let pipe = Pipe()
-        
-        // Redirect the command's standard output and error logs into our pipe.
         process.standardOutput = pipe
         process.standardError = pipe
-        
-        // Tell the process to execute zsh (the Mac terminal shell) with the "-c" flag.
-        // "-c" tells zsh to read the next argument string as a command to run.
         process.arguments = ["-c", command]
         process.launchPath = "/bin/zsh"
-        
-        // Tell the zsh shell where to look. We set its working directory to
-        // the active folder selected by the user.
         process.currentDirectoryURL = workspaceURL
-        
-        // 'try' runs a command that could fail. If it fails, the function exits
-        // and throws the error. 'run()' launches the shell command.
+
         try process.run()
 
         let finishedInTime = await withCheckedContinuation { continuation in
@@ -270,24 +272,61 @@ class WorkspaceManager: ObservableObject {
             suffix: "\n\n[Output truncated at \(SecurityPolicy.maxShellOutputBytes) bytes]"
         )
     }
+
+    func confirmPendingShell(_ pending: PendingShellCommand) async -> String {
+        defer { clearPendingShellCommand() }
+        do {
+            if pending.runInBackground {
+                return try runCommandBackground(pending.command)
+            }
+            return try await runCommand(pending.command)
+        } catch {
+            return "Error: \(error.localizedDescription)"
+        }
+    }
+
+    func confirmPendingIMessage(_ pending: PendingIMessageSend) async -> String {
+        defer { clearPendingIMessageSend() }
+        do {
+            try await IMessageDirectSender.send(
+                recipient: pending.recipient,
+                text: pending.text,
+                service: pending.service
+            )
+            return "Message sent to \(pending.recipient)."
+        } catch {
+            return "Failed to send iMessage: \(error.localizedDescription)"
+        }
+    }
+}
+
+struct PendingShellCommand: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let command: String
+    let runInBackground: Bool
+    let conversationID: UUID?
 }
 
 enum ModelType: String, CaseIterable, Identifiable, Codable {
-    case system = "On-Device (Apple Intelligence)"
-    case pcc = "Private Cloud Compute"
     case codex = "Codex (ChatGPT Subscription)"
-    case claude = "Claude (Anthropic)"
-    case gemini = "Gemini (Google)"
     case openai = "OpenAI (ChatGPT)"
 
     var id: String { self.rawValue }
+
+    /// Maps persisted raw values, including removed backends, to a supported model.
+    static func resolved(fromStored rawValue: String?) -> ModelType {
+        guard let rawValue else { return .openai }
+        if let model = ModelType(rawValue: rawValue) {
+            return model
+        }
+        return .openai
+    }
 
     static func preferredForSpecializedAgents() -> ModelType {
         let openaiKey = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
         if !openaiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .openai
         }
-        return .system
+        return .openai
     }
 }
-

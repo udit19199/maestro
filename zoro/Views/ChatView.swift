@@ -15,8 +15,6 @@ struct ChatView: View {
 
     @State private var prompt = ""
     @State private var handoffSuggestion: AgentHandoffDetector.Suggestion?
-    @State private var isApplyingCalendarEvents = false
-    @State private var isSendingMail = false
 
     private var conversation: Conversation? {
         conversationStore.conversation(id: conversationID)
@@ -35,18 +33,7 @@ struct ChatView: View {
                     agentHandoffBanner(handoffSuggestion)
                 }
 
-                if !workspace.pendingCalendarProposals.isEmpty, conversation.agentType == .planner {
-                    plannerConfirmationPanel
-                }
-
-                if let pendingMailSend = workspace.pendingMailSend {
-                    MailSendConfirmPanel(
-                        pending: pendingMailSend.panelModel,
-                        isSending: isSendingMail,
-                        onSend: { confirmMailSend(pendingMailSend) },
-                        onCancel: { workspace.clearPendingMailSend() }
-                    )
-                }
+                // Side-effect confirms live in PendingActionsBar (AppShell).
 
                 if !workspace.activeTodos.isEmpty {
                     executionPlanPanel
@@ -123,43 +110,6 @@ struct ChatView: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
-    private var plannerConfirmationPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Apply \(workspace.pendingCalendarProposals.count) event\(workspace.pendingCalendarProposals.count == 1 ? "" : "s") to calendar?")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-
-            ForEach(workspace.pendingCalendarProposals) { proposal in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(proposal.title)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    Text("\(proposal.startDate) → \(proposal.endDate)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            HStack {
-                Button("Cancel") {
-                    workspace.clearPendingCalendarProposals()
-                }
-                .buttonStyle(.bordered)
-
-                Button(isApplyingCalendarEvents ? "Applying…" : "Apply to Calendar") {
-                    applyCalendarProposals()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isApplyingCalendarEvents)
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding([.horizontal, .top])
-    }
-
     private func chatHeader(conversation: Conversation) -> some View {
         HStack(spacing: 12) {
             Label(conversation.agentType.displayName, systemImage: conversation.agentType.systemImage)
@@ -198,13 +148,7 @@ struct ChatView: View {
     }
 
     private var modelStatusColor: Color {
-        switch conversation?.agentType {
-        case .default:
-            return .green
-        default:
-            let preferred = ModelType.preferredForSpecializedAgents()
-            return preferred == .system ? .orange : .green
-        }
+        return .green
     }
 
     private var modelStatusHelp: String {
@@ -326,57 +270,6 @@ struct ChatView: View {
         }
         if let lastUser = conversation.messages.last(where: { $0.role == .user }) {
             handoffSuggestion = AgentHandoffDetector.suggest(for: lastUser.content)
-        }
-    }
-
-    private func applyCalendarProposals() {
-        let proposals = workspace.pendingCalendarProposals
-        guard !proposals.isEmpty else { return }
-        isApplyingCalendarEvents = true
-
-        Task {
-            let result = await CalendarEventApplier.apply(proposals: proposals)
-            await MainActor.run {
-                workspace.clearPendingCalendarProposals()
-                conversationStore.appendMessage(
-                    to: conversationID,
-                    message: StoredMessage(role: .assistant, content: result)
-                )
-                isApplyingCalendarEvents = false
-            }
-        }
-    }
-
-    private func confirmMailSend(_ pending: PendingMailSendRequest) {
-        guard !isSendingMail else { return }
-        isSendingMail = true
-
-        Task {
-            do {
-                try await MailManager.shared.confirmPendingSend(pending)
-                await MainActor.run {
-                    workspace.clearPendingMailSend()
-                    conversationStore.appendMessage(
-                        to: conversationID,
-                        message: StoredMessage(
-                            role: .assistant,
-                            content: "Email sent to \(pending.to) from \(pending.accountLabel)."
-                        )
-                    )
-                    isSendingMail = false
-                }
-            } catch {
-                await MainActor.run {
-                    conversationStore.appendMessage(
-                        to: conversationID,
-                        message: StoredMessage(
-                            role: .assistant,
-                            content: "Failed to send email: \(error.localizedDescription)"
-                        )
-                    )
-                    isSendingMail = false
-                }
-            }
         }
     }
 

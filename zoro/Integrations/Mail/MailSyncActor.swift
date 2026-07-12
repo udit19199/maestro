@@ -156,7 +156,8 @@ actor MailSyncActor {
 // MARK: - Chunking
 
 private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
+    /// Pure helper; must stay nonisolated under default MainActor isolation.
+    nonisolated func chunked(into size: Int) -> [[Element]] {
         guard size > 0 else { return isEmpty ? [] : [self] }
         var chunks: [[Element]] = []
         chunks.reserveCapacity((count + size - 1) / size)

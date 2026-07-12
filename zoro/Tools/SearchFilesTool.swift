@@ -12,6 +12,7 @@ import FoundationModels
 struct SearchFilesTool: Tool {
     let name = "search_files"
     let description = "Search the contents of text files in the workspace for a matching query string (like ripgrep)."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -20,11 +21,10 @@ struct SearchFilesTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
-        guard let workspaceURL = workspace.workspaceURL else {
+        guard let workspaceURL = WorkspaceManager.shared.workspaceURL else {
             return "Error: No workspace directory selected."
         }
 

@@ -2,8 +2,6 @@
 //  CommandLineTool.swift
 //  zoro
 //
-//  Created by Udit Agarwal on 19/06/26.
-//
 
 import FoundationModels
 import Foundation
@@ -11,27 +9,48 @@ import Foundation
 @MainActor
 struct CommandLineTool: Tool {
     let name = "run_terminal_command"
-    let description = "Execute a terminal command or script inside the project's workspace (e.g. running tests, building code, starting dev servers)."
+    let description = "Propose a terminal command to run in the workspace. Does not execute until the user confirms in the app."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
         @Guide(description: "The exact zsh shell command to execute")
         var command: String
 
-        @Guide(description: "If true, runs the command in the background immediately. Use true for servers, test watchers, or blocking processes. Defaults to false.")
+        @Guide(description: "If true, runs in background after user confirms. Defaults to false.")
         var runInBackground: Bool
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
 
-        if arguments.runInBackground {
-            return try await workspace.runCommandBackground(arguments.command)
-        } else {
-            return try await workspace.runCommand(arguments.command)
+        let trimmed = arguments.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "Error: Command is empty."
         }
+
+        guard WorkspaceManager.shared.workspaceURL != nil else {
+            return "Error: No workspace directory selected."
+        }
+
+        let pending = PendingShellCommand(
+            id: UUID(),
+            command: trimmed,
+            runInBackground: arguments.runInBackground,
+            conversationID: WorkspaceManager.shared.activeConversationID
+        )
+        WorkspaceManager.shared.setPendingShellCommand(pending)
+
+        return """
+        Command staged — NOT executed. Waiting for user confirmation in Zoro.
+
+        pending_shell_id: \(pending.id.uuidString)
+        command: \(trimmed)
+        background: \(arguments.runInBackground)
+
+        Tell the user to confirm or cancel the command in the app before it runs.
+        """
     }
 }

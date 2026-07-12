@@ -5,7 +5,6 @@
 
 import SwiftUI
 import FoundationModels
-import ClaudeForFoundationModels
 import ServiceManagement
 
 struct SettingsView: View {
@@ -14,8 +13,6 @@ struct SettingsView: View {
     @ObservedObject private var briefingService = BriefingService.shared
     @ObservedObject private var codexAuth = CodexAuthManager.shared
 
-    @State private var anthropicApiKey = ""
-    @State private var geminiApiKey = ""
     @State private var openaiApiKey = ""
     @State private var tavilyApiKey = ""
     @State private var codexModelName = "gpt-5-codex"
@@ -51,7 +48,7 @@ struct SettingsView: View {
     private var generalTab: some View {
         Form {
             Section("Model") {
-                Picker("Active Backend (Default agent uses Apple Intelligence)", selection: $workspace.selectedModelType) {
+                Picker("Active Backend", selection: $workspace.selectedModelType) {
                     ForEach(ModelType.allCases) { type in
                         Text(type.rawValue).tag(type)
                     }
@@ -62,7 +59,7 @@ struct SettingsView: View {
                     workspace.resetSession()
                 }
 
-                Text("Research, Planner, and Teach prefer OpenAI when an OpenAI key is set; otherwise Apple Intelligence.")
+                Text("Research, Planner, and Teach prefer OpenAI when an OpenAI key is set.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -72,24 +69,6 @@ struct SettingsView: View {
                         updateModelAvailability()
                         workspace.resetSession()
                     }
-
-                if workspace.selectedModelType == .claude {
-                    SecureField("Anthropic API Key (sk-ant-…)", text: $anthropicApiKey)
-                        .onChange(of: anthropicApiKey) { _, newValue in
-                            KeychainHelper.save(key: "anthropic_api_key", value: newValue)
-                            updateModelAvailability()
-                            workspace.resetSession()
-                        }
-                }
-
-                if workspace.selectedModelType == .gemini {
-                    SecureField("Gemini API Key", text: $geminiApiKey)
-                        .onChange(of: geminiApiKey) { _, newValue in
-                            KeychainHelper.save(key: "gemini_api_key", value: newValue)
-                            updateModelAvailability()
-                            workspace.resetSession()
-                        }
-                }
 
                 if workspace.selectedModelType == .codex {
                     Text("Uses your ChatGPT / Codex subscription (same backend as the Codex CLI, not api.openai.com).")
@@ -247,6 +226,10 @@ struct SettingsView: View {
             }
 
             Section("iMessage") {
+                Text("Remote commands can read mail and files for whitelisted senders. Outbound email/text/calendar creates from the model still require on-Mac confirmation. Leave off unless you need remote access.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Toggle("Enable iMessage Command Listener", isOn: $imessageListenerEnabled)
                     .onChange(of: imessageListenerEnabled) { _, newValue in
                         UserDefaults.standard.set(newValue, forKey: "imessage_listener_enabled")
@@ -254,12 +237,12 @@ struct SettingsView: View {
                     }
 
                 if imessageListenerEnabled {
-                    TextField("Whitelisted senders (comma-separated)", text: $imessageSenderWhitelist)
+                    TextField("Whitelisted senders (comma-separated, required)", text: $imessageSenderWhitelist)
                         .onChange(of: imessageSenderWhitelist) { _, newValue in
                             UserDefaults.standard.set(newValue, forKey: "imessage_sender_whitelist")
                         }
 
-                    SecureField("Command passcode (optional)", text: $imessagePasscode)
+                    SecureField("Command passcode (optional but recommended)", text: $imessagePasscode)
                         .onChange(of: imessagePasscode) { _, newValue in
                             if newValue.isEmpty {
                                 KeychainHelper.delete(key: "imessage_passcode")
@@ -267,6 +250,12 @@ struct SettingsView: View {
                                 KeychainHelper.save(key: "imessage_passcode", value: newValue)
                             }
                         }
+
+                    if !SecurityPolicy.hasNonEmptyWhitelist(imessageSenderWhitelist) {
+                        Label("Add at least one whitelisted sender or remote commands are ignored.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
 
                     if !hasFullDiskAccess {
                         Label("Grant Full Disk Access in System Settings for iMessage commands.", systemImage: "exclamationmark.triangle.fill")
@@ -348,8 +337,6 @@ struct SettingsView: View {
     }
 
     private func loadSettings() {
-        anthropicApiKey = KeychainHelper.retrieve(key: "anthropic_api_key") ?? ""
-        geminiApiKey = KeychainHelper.retrieve(key: "gemini_api_key") ?? ""
         openaiApiKey = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
         tavilyApiKey = KeychainHelper.retrieve(key: "tavily_api_key") ?? ""
         codexModelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
@@ -373,10 +360,11 @@ struct SettingsView: View {
         hasFullDiskAccess = checkFullDiskAccess()
         launchAtLogin = (SMAppService.mainApp.status == .enabled)
 
-        if let savedModelType = UserDefaults.standard.string(forKey: "selected_model_type"),
-           let model = ModelType(rawValue: savedModelType) {
-            workspace.selectedModelType = model
-        }
+        let resolvedModel = ModelType.resolved(
+            fromStored: UserDefaults.standard.string(forKey: "selected_model_type")
+        )
+        workspace.selectedModelType = resolvedModel
+        UserDefaults.standard.set(resolvedModel.rawValue, forKey: "selected_model_type")
 
         updateModelAvailability()
         profileStore.load()
@@ -407,7 +395,7 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
 
         if panel.runModal() == .OK, let url = panel.url {
-            workspace.workspaceURL = url
+            workspace.setWorkspaceURL(url)
             workspace.resetSession()
         }
     }
@@ -435,58 +423,6 @@ struct SettingsView: View {
     private func updateModelAvailability() {
         Task {
             switch workspace.selectedModelType {
-            case .system:
-                let model = SystemLanguageModel.default
-                let status = model.availability
-                await MainActor.run {
-                    switch status {
-                    case .available:
-                        modelAvailabilityMessage = "Apple Intelligence model is ready."
-                        isModelReady = true
-                    case .unavailable(let reason):
-                        modelAvailabilityMessage = "Apple Intelligence is unavailable: \(reasonDescription(for: reason))"
-                        isModelReady = false
-                    @unknown default:
-                        modelAvailabilityMessage = "Status unknown."
-                        isModelReady = false
-                    }
-                }
-            case .pcc:
-                let model = PrivateCloudComputeLanguageModel()
-                let status = model.availability
-                await MainActor.run {
-                    switch status {
-                    case .available:
-                        modelAvailabilityMessage = "PCC is available (entitlements required at runtime)."
-                        isModelReady = true
-                    case .unavailable(let reason):
-                        modelAvailabilityMessage = "PCC is unavailable: \(reason)"
-                        isModelReady = false
-                    @unknown default:
-                        modelAvailabilityMessage = "Status unknown."
-                        isModelReady = false
-                    }
-                }
-            case .claude:
-                await MainActor.run {
-                    if anthropicApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        modelAvailabilityMessage = "Please enter your Anthropic API key."
-                        isModelReady = false
-                    } else {
-                        modelAvailabilityMessage = "Claude via API key is ready."
-                        isModelReady = true
-                    }
-                }
-            case .gemini:
-                await MainActor.run {
-                    if geminiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        modelAvailabilityMessage = "Please enter your Gemini API key."
-                        isModelReady = false
-                    } else {
-                        modelAvailabilityMessage = "Gemini via API key is ready."
-                        isModelReady = true
-                    }
-                }
             case .openai:
                 await MainActor.run {
                     if openaiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -508,19 +444,6 @@ struct SettingsView: View {
                     }
                 }
             }
-        }
-    }
-
-    private func reasonDescription(for reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
-        switch reason {
-        case .modelNotReady:
-            return "Model assets are downloading/preparing."
-        case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence is disabled."
-        case .deviceNotEligible:
-            return "This Mac does not support Apple Intelligence."
-        @unknown default:
-            return "Unknown reason: \(String(describing: reason))"
         }
     }
 }

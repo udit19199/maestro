@@ -12,6 +12,7 @@ import FoundationModels
 struct PatchTool: Tool {
     let name = "patch"
     let description = "Edit a file by replacing a unique contiguous block of code/text (find) with another block (replace). This is the preferred method for editing existing files."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -26,11 +27,10 @@ struct PatchTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
-        guard let workspaceURL = workspace.workspaceURL else {
+        guard let workspaceURL = WorkspaceManager.shared.workspaceURL else {
             return "Error: No workspace directory selected."
         }
 

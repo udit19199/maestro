@@ -2,8 +2,6 @@
 //  ProcessStatusTool.swift
 //  zoro
 //
-//  Created by Antigravity on 19/06/26.
-//
 
 import Foundation
 import FoundationModels
@@ -11,48 +9,36 @@ import FoundationModels
 @MainActor
 struct ProcessStatusTool: Tool {
     let name = "get_process_status"
-    let description = "Check the status, running state, and output logs of active background processes."
+    let description = "Check status and recent output of a background terminal task by task ID."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
-        @Guide(description: "The Task ID of the background process, or empty string to list all active processes.")
+        @Guide(description: "The task ID returned when the command was started (e.g. task_abc123)")
         var taskId: String
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
 
-        await workspace.pruneTerminatedProcesses()
-        let activeProcesses = await workspace.activeProcesses
+        let workspace = WorkspaceManager.shared
+        workspace.pruneTerminatedProcesses()
 
-        if arguments.taskId.isEmpty {
-            if activeProcesses.isEmpty {
-                return "No background processes currently active."
-            }
-            var lines = ["Active background processes:"]
-            for (id, proc) in activeProcesses {
-                let status = (await proc.isRunning) ? "RUNNING" : "TERMINATED"
-                lines.append("- [\(id)] (\(status)) Command: \(proc.command)")
-            }
-            return lines.joined(separator: "\n")
+        guard let running = workspace.activeProcesses[arguments.taskId] else {
+            return "Error: No active process with ID '\(arguments.taskId)'."
         }
 
-        guard let proc = activeProcesses[arguments.taskId] else {
-            return "Error: No background process found with Task ID '\(arguments.taskId)'."
-        }
+        let output = running.getAvailableOutput()
+        let status = running.isRunning ? "running" : "exited"
+        let elapsed = Int(Date().timeIntervalSince(running.startDate))
+        return """
+        Task \(arguments.taskId): \(status) (\(elapsed)s)
+        Command: \(running.command)
 
-        let status = (await proc.isRunning) ? "RUNNING" : "TERMINATED"
-        let output = await proc.getAvailableOutput()
-
-        var response = "Task ID: \(arguments.taskId)\nStatus: \(status)\nCommand: \(proc.command)\n"
-        if !output.isEmpty {
-            response += "\nNew Output Logs:\n\(output)"
-        } else {
-            response += "\nNo new logs since last check."
-        }
-        return response
+        Output:
+        \(output.isEmpty ? "(no output yet)" : output)
+        """
     }
 }

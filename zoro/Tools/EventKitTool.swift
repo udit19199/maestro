@@ -12,7 +12,8 @@ import EventKit
 @MainActor
 struct EventKitTool: Tool {
     let name = "manage_calendar_and_reminders"
-    let description = "Create, read, list, and complete native macOS calendar events and reminders."
+    let description = "List calendar events and reminders. create_event stages a proposal for user confirmation (does not write until confirmed). Other mutations follow policy."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -42,14 +43,12 @@ struct EventKitTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
 
-        let context = await workspace.currentExecutionContext
-        guard SecurityPolicy.isCalendarActionPermitted(arguments.action, context: context) else {
-            return "Error: Calendar action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(context))."
+        guard SecurityPolicy.isCalendarActionPermitted(arguments.action, context: executionContext) else {
+            return "Error: Calendar action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(executionContext))."
         }
 
         let eventStore = EKEventStore()
@@ -93,24 +92,35 @@ struct EventKitTool: Tool {
         
         switch arguments.action {
         case "create_event":
+            // Human-in-the-loop: stage only — user confirms in UI before EventKit write.
             guard let title = arguments.title,
                   let startStr = arguments.startDate,
                   let endStr = arguments.endDate,
-                  let start = dateFormatter.date(from: startStr),
-                  let end = dateFormatter.date(from: endStr) else {
+                  dateFormatter.date(from: startStr) != nil,
+                  dateFormatter.date(from: endStr) != nil else {
                 return "Error: Missing required fields ('title', 'startDate', 'endDate') for 'create_event'."
             }
-            
-            let event = EKEvent(eventStore: eventStore)
-            event.title = title
-            event.startDate = start
-            event.endDate = end
-            event.location = arguments.location
-            event.notes = arguments.notes
-            event.calendar = eventStore.defaultCalendarForNewEvents
-            
-            try eventStore.save(event, span: .thisEvent)
-            return "Successfully created calendar event: '\(title)' (ID: \(event.eventIdentifier ?? ""))"
+
+            let proposal = PlannerEventProposal(
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                startDate: startStr,
+                endDate: endStr,
+                location: arguments.location,
+                notes: arguments.notes
+            )
+            var existing = WorkspaceManager.shared.pendingCalendarProposals
+            existing.append(proposal)
+            WorkspaceManager.shared.setPendingCalendarProposals(existing)
+            return """
+            Calendar event staged — NOT created. Waiting for user confirmation in Zoro.
+
+            pending_event_id: \(proposal.id.uuidString)
+            title: \(proposal.title)
+            start: \(startStr)
+            end: \(endStr)
+
+            Tell the user to confirm the event in the app before it is added to Calendar.
+            """
             
         case "list_events":
             // Fetch events in a range: default from 7 days ago to 30 days ahead
@@ -138,36 +148,53 @@ struct EventKitTool: Tool {
             return lines.joined(separator: "\n")
             
         case "delete_event":
+            // Destructive: require explicit user confirmation in UI.
             guard let id = arguments.id else {
                 return "Error: Missing event 'id' to delete."
             }
             guard let event = eventStore.event(withIdentifier: id) else {
                 return "Error: Event with ID \(id) not found."
             }
-            try eventStore.remove(event, span: .thisEvent)
-            return "Successfully deleted calendar event."
+            let pending = PendingCalendarDelete(
+                eventIdentifier: id,
+                title: event.title ?? "Untitled",
+                conversationID: WorkspaceManager.shared.activeConversationID
+            )
+            WorkspaceManager.shared.setPendingCalendarDelete(pending)
+            return """
+            Calendar delete staged — NOT deleted. Waiting for user confirmation in Zoro.
+
+            pending_delete_id: \(pending.id.uuidString)
+            event: \(pending.title)
+            id: \(id)
+
+            Tell the user to confirm deletion in the app.
+            """
             
         case "create_reminder":
-            guard let title = arguments.title else {
+            // Human-in-the-loop: stage only — user confirms in UI before Reminders write.
+            guard let title = arguments.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
                 return "Error: Missing required 'title' field for 'create_reminder'."
             }
-            
-            let reminder = EKReminder(eventStore: eventStore)
-            reminder.title = title
-            reminder.notes = arguments.notes
-            
-            guard let defaultCal = eventStore.defaultCalendarForNewReminders() else {
-                return "Error: No default calendar found for reminders."
+            if let dueStr = arguments.dueDate, dateFormatter.date(from: dueStr) == nil {
+                return "Error: Invalid dueDate format (use ISO8601)."
             }
-            reminder.calendar = defaultCal
-            
-            if let dueStr = arguments.dueDate, let dueDate = dateFormatter.date(from: dueStr) {
-                let calendar = Calendar.current
-                reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: dueDate)
-            }
-            
-            try eventStore.save(reminder, commit: true)
-            return "Successfully created reminder: '\(title)' (ID: \(reminder.calendarItemIdentifier))"
+            let pending = PendingReminderProposal(
+                title: title,
+                dueDate: arguments.dueDate,
+                notes: arguments.notes,
+                conversationID: WorkspaceManager.shared.activeConversationID
+            )
+            WorkspaceManager.shared.setPendingReminder(pending)
+            return """
+            Reminder staged — NOT created. Waiting for user confirmation in Zoro.
+
+            pending_reminder_id: \(pending.id.uuidString)
+            title: \(title)
+            due: \(arguments.dueDate ?? "(none)")
+
+            Tell the user to confirm the reminder in the app before it is saved.
+            """
             
         case "list_reminders":
             let calendars = eventStore.calendars(for: .reminder)
@@ -197,15 +224,24 @@ struct EventKitTool: Tool {
             guard let id = arguments.id else {
                 return "Error: Missing reminder 'id' to complete."
             }
-            
             let item = eventStore.calendarItem(withIdentifier: id)
             guard let reminder = item as? EKReminder else {
                 return "Error: Reminder with ID \(id) not found."
             }
-            
-            reminder.isCompleted = true
-            try eventStore.save(reminder, commit: true)
-            return "Successfully completed reminder: '\(reminder.title ?? "")'"
+            let pending = PendingReminderComplete(
+                reminderIdentifier: id,
+                title: reminder.title ?? "Untitled",
+                conversationID: WorkspaceManager.shared.activeConversationID
+            )
+            WorkspaceManager.shared.setPendingReminderComplete(pending)
+            return """
+            Reminder complete staged — NOT marked done. Waiting for user confirmation in Zoro.
+
+            pending_complete_id: \(pending.id.uuidString)
+            reminder: \(pending.title)
+
+            Tell the user to confirm in the app.
+            """
             
         default:
             return "Error: Invalid action '\(arguments.action)'."

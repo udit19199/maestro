@@ -7,8 +7,10 @@
 
 import Foundation
 
-enum GmailParsing {
-    static func decodeBase64URLData(_ input: String) -> Data? {
+/// Pure string/MIME helpers. Explicitly nonisolated under default MainActor isolation
+/// so GmailService, auditors, and tests can call them from any context.
+enum GmailParsing: Sendable {
+    nonisolated static func decodeBase64URLData(_ input: String) -> Data? {
         var base64 = input
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
@@ -19,26 +21,26 @@ enum GmailParsing {
         return Data(base64Encoded: base64)
     }
 
-    static func decodeBase64URL(_ input: String) -> String? {
+    nonisolated static func decodeBase64URL(_ input: String) -> String? {
         guard let data = decodeBase64URLData(input) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    static func base64URLEncode(_ data: Data) -> String {
+    nonisolated static func base64URLEncode(_ data: Data) -> String {
         data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
 
-    static func stripHTML(_ html: String) -> String {
+    nonisolated static func stripHTML(_ html: String) -> String {
         html
             .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func extractMessageIds(from text: String) -> [String] {
+    nonisolated static func extractMessageIds(from text: String) -> [String] {
         let patterns = [
             /id=([a-f0-9]+)/,
             /(?i)message[_ ]?id[:\s]+([a-f0-9]+)/,
@@ -53,11 +55,11 @@ enum GmailParsing {
         return Array(ids)
     }
 
-    static func extractIndexMessageIds(from toolOutput: String) -> [String] {
+    nonisolated static func extractIndexMessageIds(from toolOutput: String) -> [String] {
         extractMessageIds(from: toolOutput)
     }
 
-    static func userPromptMentionsEmail(_ prompt: String) -> Bool {
+    nonisolated static func userPromptMentionsEmail(_ prompt: String) -> Bool {
         let lower = prompt.lowercased()
         let keywords = [
             "gmail", "email", "e-mail", "inbox", "mail from", "message from",
@@ -66,7 +68,7 @@ enum GmailParsing {
         return keywords.contains { lower.contains($0) }
     }
 
-    static func looksLikeEmailSummary(_ response: String) -> Bool {
+    nonisolated static func looksLikeEmailSummary(_ response: String) -> Bool {
         let lower = response.lowercased()
         let summarySignals = [
             "the email", "this email", "the message says", "they wrote",

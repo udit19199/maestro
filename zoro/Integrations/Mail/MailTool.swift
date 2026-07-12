@@ -36,6 +36,7 @@ struct MailTool: Tool {
     Use get_status for account/unread info. Use list_unread/search for indexes, then read_message for full bodies.
     Never summarize email from snippets alone. send_email and reply_to_message create drafts only and return pending_send_id for user confirmation.
     """
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -74,19 +75,18 @@ struct MailTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let workspace = await WorkspaceManager.shared
-        if let permissionError = await workspace.toolPermissionError(for: name) {
+        let workspace = WorkspaceManager.shared
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
             return permissionError
         }
 
-        let context = await workspace.currentExecutionContext
-        guard SecurityPolicy.isMailActionPermitted(arguments.action, context: context) else {
-            return "Error: Mail action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(context))."
+        guard SecurityPolicy.isMailActionPermitted(arguments.action, context: executionContext) else {
+            return "Error: Mail action '\(arguments.action)' is not permitted in \(SecurityPolicy.contextDescription(executionContext))."
         }
 
-        let mail = await MailManager.shared
+        let mail = MailManager.shared
         let activityLabel = "Mail: \(arguments.action)"
-        await mail.logActivity(activityLabel)
+        mail.logActivity(activityLabel)
 
         do {
             let result: String
@@ -113,7 +113,7 @@ struct MailTool: Tool {
                 } else {
                     let providers = mail.allProviders()
                     guard !providers.isEmpty else {
-                        await mail.failActivity(matching: activityLabel)
+                        mail.failActivity(matching: activityLabel)
                         return "Error: No mail accounts connected."
                     }
                     if providers.count > 1 && arguments.accountId == nil && arguments.accountEmail == nil {
@@ -127,7 +127,7 @@ struct MailTool: Tool {
                         let fetch = try await MailSyncActor.shared.fetchUnread(from: pair.provider, limit: limit)
                         result = MailFormatting.formatIndex(fetch, account: pair.account)
                     } else {
-                        await mail.failActivity(matching: activityLabel)
+                        mail.failActivity(matching: activityLabel)
                         return "Error: No mail accounts connected."
                     }
                 }
@@ -135,7 +135,7 @@ struct MailTool: Tool {
 
             case "search":
                 guard let query = arguments.query?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return "Error: Missing required 'query' for 'search'."
                 }
                 let limit = arguments.maxResults ?? SecurityPolicy.gmailPageSize
@@ -145,7 +145,7 @@ struct MailTool: Tool {
                     accountEmail: arguments.accountEmail,
                     requireAccount: true
                 ) else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return Self.accountError(
                         mail: mail,
                         accountId: arguments.accountId,
@@ -159,7 +159,7 @@ struct MailTool: Tool {
 
             case "read_message":
                 guard let messageId = arguments.messageId, !messageId.isEmpty else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return "Error: Missing required 'messageId' for 'read_message'."
                 }
                 guard case .success(let pair) = Self.resolveAccountPair(
@@ -168,7 +168,7 @@ struct MailTool: Tool {
                     accountEmail: arguments.accountEmail,
                     requireAccount: true
                 ) else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return Self.accountError(
                         mail: mail,
                         accountId: arguments.accountId,
@@ -183,7 +183,7 @@ struct MailTool: Tool {
 
             case "archive_message":
                 guard let messageId = arguments.messageId, !messageId.isEmpty else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return "Error: Missing required 'messageId' for 'archive_message'."
                 }
                 guard case .success(let pair) = Self.resolveAccountPair(
@@ -192,7 +192,7 @@ struct MailTool: Tool {
                     accountEmail: arguments.accountEmail,
                     requireAccount: true
                 ) else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return Self.accountError(
                         mail: mail,
                         accountId: arguments.accountId,
@@ -205,7 +205,7 @@ struct MailTool: Tool {
 
             case "mark_read":
                 guard let messageId = arguments.messageId, !messageId.isEmpty else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return "Error: Missing required 'messageId' for 'mark_read'."
                 }
                 guard case .success(let pair) = Self.resolveAccountPair(
@@ -214,7 +214,7 @@ struct MailTool: Tool {
                     accountEmail: arguments.accountEmail,
                     requireAccount: true
                 ) else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return Self.accountError(
                         mail: mail,
                         accountId: arguments.accountId,
@@ -232,7 +232,7 @@ struct MailTool: Tool {
                     accountEmail: arguments.accountEmail,
                     requireAccount: true
                 ) else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return Self.accountError(
                         mail: mail,
                         accountId: arguments.accountId,
@@ -243,7 +243,7 @@ struct MailTool: Tool {
                 guard let to = arguments.to, !to.isEmpty,
                       let subject = arguments.subject,
                       let body = arguments.body else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return "Error: Missing required fields ('to', 'subject', 'body') for 'create_draft'."
                 }
                 let draft = MailDraft(
@@ -263,7 +263,7 @@ struct MailTool: Tool {
                     accountEmail: arguments.accountEmail,
                     requireAccount: true
                 ) else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return Self.accountError(
                         mail: mail,
                         accountId: arguments.accountId,
@@ -274,12 +274,12 @@ struct MailTool: Tool {
                 guard let to = arguments.to, !to.isEmpty,
                       let subject = arguments.subject,
                       let body = arguments.body else {
-                    await mail.failActivity(matching: activityLabel)
+                    mail.failActivity(matching: activityLabel)
                     return "Error: Missing required fields ('to', 'subject', 'body') for '\(arguments.action)'."
                 }
                 if arguments.action == "reply_to_message" {
                     guard let replyId = arguments.inReplyToMessageId, !replyId.isEmpty else {
-                        await mail.failActivity(matching: activityLabel)
+                        mail.failActivity(matching: activityLabel)
                         return "Error: Missing required 'inReplyToMessageId' for 'reply_to_message'."
                     }
                     _ = replyId
@@ -303,7 +303,7 @@ struct MailTool: Tool {
                     subject: subject,
                     bodyPreview: preview
                 )
-                await workspace.setPendingMailSend(pending)
+                workspace.setPendingMailSend(pending)
                 result = """
                 Draft created on account \(pair.1.accountLabel). Email NOT sent yet — awaiting user confirmation in the app.
 
@@ -317,20 +317,20 @@ struct MailTool: Tool {
                 """
 
             default:
-                await mail.failActivity(matching: activityLabel)
+                mail.failActivity(matching: activityLabel)
                 return "Error: Invalid action '\(arguments.action)'."
             }
 
-            await mail.completeActivity(matching: activityLabel)
+            mail.completeActivity(matching: activityLabel)
             Task { await mail.refreshSnapshot() }
-            return await finalize(
+            return finalize(
                 result,
                 accountId: readAccountId,
                 readMessageIds: readMessageIds,
                 isIndexOnly: isIndexOnly
             )
         } catch {
-            await mail.failActivity(matching: activityLabel)
+            mail.failActivity(matching: activityLabel)
             if let mailError = error as? MailError {
                 return "Error: \(mailError.localizedDescription)"
             }
@@ -375,17 +375,15 @@ struct MailTool: Tool {
         accountId: UUID?,
         readMessageIds: [String],
         isIndexOnly: Bool
-    ) async -> String {
-        await MainActor.run {
-            if isIndexOnly {
-                MailReadAuditor.recordIndexFetch(output: result)
-            }
-            if let accountId, !readMessageIds.isEmpty {
-                MailManager.shared.recordMessagesRead(accountId: accountId, messageIds: readMessageIds)
-                MailReadAuditor.recordFullRead()
-            }
+    ) -> String {
+        if isIndexOnly {
+            MailReadAuditor.recordIndexFetch(output: result)
         }
-        let footer = await MailManager.shared.sessionReadFooter()
+        if let accountId, !readMessageIds.isEmpty {
+            MailManager.shared.recordMessagesRead(accountId: accountId, messageIds: readMessageIds)
+            MailReadAuditor.recordFullRead()
+        }
+        let footer = MailManager.shared.sessionReadFooter()
         return result + "\n\n" + footer
     }
 }

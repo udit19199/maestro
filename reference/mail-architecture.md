@@ -1,6 +1,6 @@
 # Zoro Multi-Inbox Mail Architecture
 
-Architecture reference for the hybrid Gmail + IMAP mail system. Intended for review before backend wiring.
+Architecture reference for the hybrid Gmail + IMAP mail system (shipped).
 
 ## Goals
 
@@ -20,7 +20,7 @@ flowchart TB
         MailRowView
         AccountBadge
         CleanupReviewSheet
-        MailSendConfirmPanel
+        PendingActionsBar
         SettingsMailAccountsSection
     end
 
@@ -115,10 +115,9 @@ struct BriefingMailItem: Identifiable, Equatable, Sendable {
 
 ### Agent tool surface
 
-- Tool name: `manage_mail` (replaces `manage_gmail`)
-- General agent only
+- Tool name: `manage_mail` (General agent only)
 - Optional `account_id` / `account_email`; required for writes
-- Send path: always creates draft → `pendingMailSend` → `MailSendConfirmPanel`
+- Send path: draft → `pendingMailSend` → user confirms in `PendingActionsBar`
 
 ## Concurrency model
 

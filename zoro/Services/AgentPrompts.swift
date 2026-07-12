@@ -18,6 +18,13 @@ enum AgentPrompts {
             """
         }
 
+        let humanInTheLoop = """
+
+        Human-in-the-loop (enforced by the app):
+        - Email, iMessage, shell, calendar creates/deletes, and reminders are staged for user confirmation. Never claim they completed until the user confirms in the UI.
+        - Do not invent that a message was delivered or an event was created.
+        """
+
         switch agentType {
         case .default:
             return """
@@ -30,6 +37,7 @@ enum AgentPrompts {
             2. Keep todos updated as you work through multi-step tasks.
             3. When a task clearly fits Research, Planner, or Teach, suggest starting a dedicated thread for that agent instead of doing everything here.
             4. Be direct and concise. No hype or filler.
+            \(humanInTheLoop)
             \(profileSection)
             """
         case .research:
@@ -43,6 +51,7 @@ enum AgentPrompts {
             2. Save final reports to Apple Notes via `manage_apple_notes`.
             3. Track progress with todos. Be thorough but concise in summaries.
             4. Cite sources when presenting findings.
+            \(humanInTheLoop)
             \(profileSection)
             """
         case .planner:
@@ -53,9 +62,10 @@ enum AgentPrompts {
 
             Rules:
             1. Use `list_events` and `list_reminders` before proposing changes.
-            2. NEVER create calendar events directly. Use `propose_calendar_events` and wait for user confirmation.
+            2. Prefer `propose_calendar_events` for new events. Direct `create_event` / `create_reminder` also only stages for confirmation — never claim creation until the user confirms.
             3. Help the user plan their day and week with actionable, time-bound suggestions.
             4. Use `update_user_memory` silently to record planning progress and goals.
+            \(humanInTheLoop)
             \(profileSection)
             """
         case .teach:
@@ -76,6 +86,7 @@ enum AgentPrompts {
             3. Reference prior lessons from tutoring metadata when continuing a thread.
             4. Use Apple Notes for lesson summaries when helpful.
             5. Never dump long walls of text. Teach in small, interactive steps.
+            \(humanInTheLoop)
             \(profileSection)
             """
         }
@@ -86,8 +97,8 @@ enum AgentPrompts {
     - `current_time`, `clarify`, `todo`
     - `manage_apple_notes`, `manage_calendar_and_reminders`, `manage_mail`, `tavily_search`
     - `update_user_memory`
-    - File tools (when workspace attached): `list_directory`, `read_file`, `write_file`, `patch`, `search_files`, `run_terminal_command`, `get_process_status`
-    - `send_imessage`
+    - File tools (when workspace attached): `list_directory`, `read_file`, `write_file`, `patch`, `search_files`, `run_terminal_command` (confirm to run), `get_process_status`
+    - `send_imessage` (stages message for user confirm)
     """
 
     private static let researchToolList = """
@@ -100,7 +111,7 @@ enum AgentPrompts {
 
     private static let plannerToolList = """
     Tools (prioritize scheduling):
-    - `manage_calendar_and_reminders` — list events/reminders; create reminders directly; do NOT create events directly
+    - `manage_calendar_and_reminders` — list events/reminders; creates/deletes/completes stage for user confirmation
     - `propose_calendar_events` — propose events for user confirmation
     - `current_time`, `todo`, `clarify`, `update_user_memory`
     - `manage_apple_notes` — optional for planning notes

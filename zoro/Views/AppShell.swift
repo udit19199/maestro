@@ -17,7 +17,10 @@ struct AppShell: View {
             ConversationSidebarView(showNewChatSheet: $showNewChatSheet)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
-            detailContent
+            VStack(spacing: 0) {
+                PendingActionsBar()
+                detailContent
+            }
         }
         .sheet(isPresented: $showNewChatSheet) {
             NewChatSheet()

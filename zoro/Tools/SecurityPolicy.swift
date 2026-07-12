@@ -3,13 +3,24 @@
 //  zoro
 //
 //  Central security policy, validation, and escaping helpers.
+//  Authorization is enforced in Swift — not via system prompts.
 //
 
 import Foundation
 
-enum AgentExecutionContext: Equatable {
+enum AgentExecutionContext: Equatable, Sendable {
     case local
     case iMessage(requester: String)
+
+    var isRemote: Bool {
+        if case .iMessage = self { return true }
+        return false
+    }
+
+    var requester: String? {
+        if case .iMessage(let requester) = self { return requester }
+        return nil
+    }
 }
 
 struct WorkspacePathResolutionError: Error, CustomStringConvertible {
@@ -29,33 +40,25 @@ enum SecurityPolicy {
     static let maxGmailMessagesPerOperation = 250
     static let maxGmailBatchRead = 20
     static let maxGmailBodyBytes = 1_048_576
-    static let maxGmailAttachmentBytes = 524_288
     static let gmailMaxRetries = 5
     static let gmailAutoRefreshSeconds: TimeInterval = 300
 
-    private static let gmailTextAttachmentMimePrefixes = [
-        "text/",
-        "application/json",
-        "application/xml",
-        "application/csv"
-    ]
-
-    static func isGmailTextAttachment(_ mimeType: String) -> Bool {
-        let lower = mimeType.lowercased()
-        return gmailTextAttachmentMimePrefixes.contains { lower.hasPrefix($0) || lower == $0 }
-    }
-
-    static func isGmailReadableAttachment(_ mimeType: String) -> Bool {
-        let lower = mimeType.lowercased()
-        if lower == "application/pdf" { return true }
-        return isGmailTextAttachment(mimeType)
-    }
-
-    private static let iMessageDeniedGmailActions: Set<String> = [
-        "send_email",
-        "trash_message",
-        "create_draft",
-        "reply_to_thread"
+    /// Tools the model may invoke during an iMessage-sourced turn.
+    /// Outbound side effects (send text/email, calendar create, memory write) are denied
+    /// or require on-Mac user confirmation — never free-fire from remote.
+    private static let iMessageAllowedTools: Set<String> = [
+        "list_directory",
+        "read_file",
+        "search_files",
+        "current_time",
+        "todo",
+        "manage_calendar_and_reminders",
+        "manage_apple_notes",
+        "tavily_search",
+        "manage_mail"
+        // send_imessage intentionally omitted: remote replies use app-controlled direct send only
+        // update_user_memory intentionally omitted
+        // run_terminal_command / write_file / patch intentionally omitted
     ]
 
     private static let iMessageDeniedMailActions: Set<String> = [
@@ -66,27 +69,17 @@ enum SecurityPolicy {
         "mark_read"
     ]
 
-    private static let iMessageAllowedTools: Set<String> = [
-        "list_directory",
-        "read_file",
-        "search_files",
-        "current_time",
-        "todo",
-        "manage_calendar_and_reminders",
-        "manage_apple_notes",
-        "tavily_search",
-        "send_imessage",
-        "manage_gmail",
-        "manage_mail"
-    ]
-
     private static let iMessageDeniedNoteActions: Set<String> = [
         "create_note",
         "append_note"
     ]
 
+    /// Remote calendar: read-only. Creates/deletes require local UI confirm paths.
     private static let iMessageDeniedCalendarActions: Set<String> = [
-        "delete_event"
+        "create_event",
+        "delete_event",
+        "create_reminder",
+        "complete_reminder"
     ]
 
     static func contextDescription(_ context: AgentExecutionContext) -> String {
@@ -96,6 +89,13 @@ enum SecurityPolicy {
         case .iMessage:
             return "iMessage remote sessions"
         }
+    }
+
+    static func toolPermissionError(for toolName: String, context: AgentExecutionContext) -> String? {
+        guard isToolPermitted(toolName, context: context) else {
+            return "Error: Tool '\(toolName)' is not permitted in \(contextDescription(context))."
+        }
+        return nil
     }
 
     static func isToolPermitted(_ toolName: String, context: AgentExecutionContext) -> Bool {
@@ -125,15 +125,6 @@ enum SecurityPolicy {
         }
     }
 
-    static func isGmailActionPermitted(_ action: String, context: AgentExecutionContext) -> Bool {
-        switch context {
-        case .local:
-            return true
-        case .iMessage:
-            return !iMessageDeniedGmailActions.contains(action)
-        }
-    }
-
     static func isMailActionPermitted(_ action: String, context: AgentExecutionContext) -> Bool {
         switch context {
         case .local:
@@ -143,12 +134,23 @@ enum SecurityPolicy {
         }
     }
 
+    /// Remote: only the stored requester. Local: any recipient (still requires user confirm to send).
     static func isIMessageRecipientPermitted(_ recipient: String, context: AgentExecutionContext) -> Bool {
         switch context {
         case .local:
             return true
         case .iMessage(let requester):
             return normalizeContact(recipient) == normalizeContact(requester)
+        }
+    }
+
+    /// Effective recipient for LLM send_imessage: remote always forces stored requester.
+    static func effectiveIMessageRecipient(requested: String, context: AgentExecutionContext) -> String {
+        switch context {
+        case .local:
+            return requested
+        case .iMessage(let requester):
+            return requester
         }
     }
 
@@ -175,9 +177,21 @@ enum SecurityPolicy {
             .map { normalizeContact($0) }
             .filter { !$0.isEmpty }
 
+        guard !allowedSenders.isEmpty else { return false }
         return allowedSenders.contains(normalizedSender)
     }
 
+    static func hasNonEmptyWhitelist(_ whitelist: String) -> Bool {
+        whitelist
+            .components(separatedBy: ",")
+            .map { normalizeContact($0) }
+            .contains { !$0.isEmpty }
+    }
+
+    // MARK: - Workspace paths (symlink-safe)
+
+    /// Resolves a workspace-relative path. Follows symlinks for existing paths;
+    /// for non-existent paths (writes), validates each existing prefix component.
     static func resolveWorkspacePath(_ path: String, relativeTo workspaceURL: URL) -> Result<URL, WorkspacePathResolutionError> {
         let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedPath.contains("\0") {
@@ -187,33 +201,80 @@ enum SecurityPolicy {
             return .failure(WorkspacePathResolutionError(message: "Error: Absolute paths are not allowed. Use a path relative to the workspace."))
         }
 
-        let workspaceRoot = workspaceURL.standardizedFileURL
-        let targetURL: URL
+        let fileManager = FileManager.default
+        let workspaceRoot = workspaceURL.resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = workspaceRoot.path
+
+        let relativeComponents: [String]
         if trimmedPath.isEmpty || trimmedPath == "." {
-            targetURL = workspaceRoot
+            relativeComponents = []
         } else {
-            targetURL = workspaceRoot.appendingPathComponent(trimmedPath).standardizedFileURL
+            relativeComponents = trimmedPath
+                .split(separator: "/")
+                .map(String.init)
+                .filter { $0 != "." && !$0.isEmpty }
         }
 
-        let rootPath = workspaceRoot.path
-        let targetPath = targetURL.path
-        let isInsideWorkspace = targetPath == rootPath || targetPath.hasPrefix(rootPath + "/")
-        guard isInsideWorkspace else {
+        if relativeComponents.contains("..") {
+            // Still allow ".." only if final resolved path stays inside after realpath
+        }
+
+        var accumulated = workspaceRoot
+        for (index, component) in relativeComponents.enumerated() {
+            if component == ".." {
+                accumulated = accumulated.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+            } else {
+                accumulated = accumulated.appendingPathComponent(component)
+            }
+
+            let isLast = index == relativeComponents.count - 1
+            if fileManager.fileExists(atPath: accumulated.path) {
+                accumulated = accumulated.resolvingSymlinksInPath().standardizedFileURL
+            } else if !isLast {
+                return .failure(WorkspacePathResolutionError(message: "Error: Path escapes workspace boundary or intermediate component is missing."))
+            }
+
+            let currentPath = accumulated.path
+            let inside = currentPath == rootPath || currentPath.hasPrefix(rootPath + "/")
+            guard inside else {
+                return .failure(WorkspacePathResolutionError(message: "Error: Path escapes workspace boundary."))
+            }
+        }
+
+        if relativeComponents.isEmpty {
+            return .success(workspaceRoot)
+        }
+
+        let finalPath = accumulated.path
+        let inside = finalPath == rootPath || finalPath.hasPrefix(rootPath + "/")
+        guard inside else {
             return .failure(WorkspacePathResolutionError(message: "Error: Path escapes workspace boundary."))
         }
 
-        return .success(targetURL)
+        // Parent of a new file must resolve inside workspace
+        if !fileManager.fileExists(atPath: accumulated.path) {
+            let parent = accumulated.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
+            let parentPath = parent.path
+            let parentInside = parentPath == rootPath || parentPath.hasPrefix(rootPath + "/")
+            guard parentInside else {
+                return .failure(WorkspacePathResolutionError(message: "Error: Path escapes workspace boundary."))
+            }
+        }
+
+        return .success(accumulated)
     }
 
     static func resolveIMessageAttachmentPath(_ path: String) -> URL? {
         let homePath = FileManager.default.homeDirectoryForCurrentUser.path
         let expandedPath = path.replacingOccurrences(of: "~", with: homePath)
-        let attachmentURL = URL(fileURLWithPath: expandedPath).standardizedFileURL
+        let attachmentURL = URL(fileURLWithPath: expandedPath).resolvingSymlinksInPath().standardizedFileURL
         let attachmentsRoot = URL(
             fileURLWithPath: homePath.appending("/Library/Messages/Attachments")
-        ).standardizedFileURL
+        ).resolvingSymlinksInPath().standardizedFileURL
 
-        guard attachmentURL.path.hasPrefix(attachmentsRoot.path + "/") else {
+        let attachPath = attachmentURL.path
+        let rootPath = attachmentsRoot.path
+        guard attachPath == rootPath || attachPath.hasPrefix(rootPath + "/") else {
             return nil
         }
         return attachmentURL

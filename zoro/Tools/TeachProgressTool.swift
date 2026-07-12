@@ -10,6 +10,7 @@ import FoundationModels
 struct TeachProgressTool: Tool {
     let name = "update_tutoring_progress"
     let description = "Update tutoring curriculum state for the current Teach conversation. Use after each lesson segment to track topic, module progress, and next steps."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -33,11 +34,15 @@ struct TeachProgressTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        guard let conversationID = await WorkspaceManager.shared.activeConversationID else {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
+            return permissionError
+        }
+
+        guard let conversationID = WorkspaceManager.shared.activeConversationID else {
             return "Error: no active conversation."
         }
 
-        await ConversationStore.shared.updateTutoringMetadata(conversationID: conversationID) { metadata in
+        ConversationStore.shared.updateTutoringMetadata(conversationID: conversationID) { metadata in
             if let topic = arguments.curriculumTopic?.trimmingCharacters(in: .whitespacesAndNewlines), !topic.isEmpty {
                 metadata.curriculumTopic = topic
             }
@@ -65,10 +70,10 @@ struct TeachProgressTool: Tool {
         }
 
         if let topic = arguments.curriculumTopic?.trimmingCharacters(in: .whitespacesAndNewlines), !topic.isEmpty {
-            _ = await ProfileStore.shared.addFact("Learning: \(topic)", source: .teach, notify: false)
+            _ = ProfileStore.shared.addFact("Learning: \(topic)", source: .teach, notify: false)
         }
         if let summary = arguments.lastLessonSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !summary.isEmpty {
-            _ = await ProfileStore.shared.addFact("Tutoring progress: \(summary)", source: .teach, notify: false)
+            _ = ProfileStore.shared.addFact("Tutoring progress: \(summary)", source: .teach, notify: false)
         }
 
         return "Tutoring progress updated."

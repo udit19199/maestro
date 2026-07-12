@@ -8,10 +8,10 @@
 import Foundation
 
 struct IMAPMailProvider: MailProvider {
-    let accountId: UUID
+    nonisolated let accountId: UUID
     let account: MailAccount
 
-    init(account: MailAccount) throws {
+    nonisolated init(account: MailAccount) throws {
         guard account.provider == .imap else {
             throw MailError.unsupportedOperation("IMAPMailProvider requires an IMAP account.")
         }

@@ -98,7 +98,7 @@ Primary design authority: [`docs/DESIGN.md`](../docs/DESIGN.md) (Morning Desk).
 
 ## Confirm panel parity
 
-Mail send and cleanup confirms must match `ChatView.plannerConfirmationPanel`:
+Mail send and cleanup confirms must match `PendingActionsBar` confirm cards:
 
 - [ ] `.padding(12)` on `controlBackgroundColor` panel
 - [ ] Cancel = `.bordered`, primary = `.borderedProminent`

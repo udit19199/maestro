@@ -61,7 +61,7 @@ final class BriefingService: ObservableObject {
         }
         pendingCalendarProposalCount = WorkspaceManager.shared.pendingCalendarProposals.count
 
-        var digest = await BriefingMailDigestGenerator.generate(from: mail.allUnreadSummaries)
+        var digest = BriefingMailDigestGenerator.generate(from: mail.allUnreadSummaries)
         if pendingCalendarProposalCount > 0 {
             let suffix = " · \(pendingCalendarProposalCount) event\(pendingCalendarProposalCount == 1 ? "" : "s") to confirm"
             if !digest.contains("to confirm") {
@@ -112,7 +112,10 @@ final class BriefingService: ObservableObject {
         refreshTimer = nil
     }
 
-    func refresh(conversationStore: ConversationStore = .shared) async {
+    func refresh(conversationStore: ConversationStore? = nil) async {
+        // Default args cannot reference MainActor `.shared` (evaluated nonisolated).
+        let conversationStore = conversationStore ?? .shared
+
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }

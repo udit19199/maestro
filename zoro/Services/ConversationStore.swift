@@ -51,7 +51,7 @@ final class ConversationStore: ObservableObject {
             guard let self else { return }
             try? await Task.sleep(nanoseconds: saveDebounceNanoseconds)
             guard !Task.isCancelled else { return }
-            await self.persistNow()
+            self.persistNow()
         }
     }
 
@@ -76,9 +76,14 @@ final class ConversationStore: ObservableObject {
         agentType: AgentType,
         source: ConversationSource = .desktop,
         title: String? = nil,
-        select: Bool = true
+        select: Bool = true,
+        remoteRequester: String? = nil
     ) -> Conversation {
-        var conversation = Conversation.new(agentType: agentType, source: source)
+        var conversation = Conversation.new(
+            agentType: agentType,
+            source: source,
+            remoteRequester: remoteRequester
+        )
         if let title {
             conversation.title = title
         }

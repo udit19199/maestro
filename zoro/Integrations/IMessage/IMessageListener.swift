@@ -252,17 +252,9 @@ class IMessageListener {
         let whitelist = defaults.string(forKey: "imessage_sender_whitelist") ?? ""
         
         guard isEnabled else { return }
-        
-        // Format and clean whitelisted phone numbers/emails
-        let allowedSenders = whitelist.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let cleanSender = sender.replacingOccurrences(of: "+", with: "")
-        
-        let isAuthorized = allowedSenders.contains { allowed in
-            let cleanAllowed = allowed.replacingOccurrences(of: "+", with: "")
-            return cleanAllowed == cleanSender || allowed == sender
-        }
-        
-        guard isAuthorized else { return }
+
+        guard SecurityPolicy.hasNonEmptyWhitelist(whitelist) else { return }
+        guard SecurityPolicy.isSenderWhitelisted(sender, whitelist: whitelist) else { return }
         
         let prefix = "zoro:"
         guard text.lowercased().hasPrefix(prefix) else { return }
@@ -339,10 +331,9 @@ class IMessageListener {
                 agentType: agentType,
                 source: .imessage,
                 title: "iMessage",
-                select: false
+                select: false,
+                remoteRequester: sender
             )
-
-            WorkspaceManager.shared.iMessageRequester = sender
 
             Task {
                 await AgentRunner.shared.sendMessage(conversationID: conversation.id, text: commandText) { reply in
@@ -408,10 +399,9 @@ class IMessageListener {
     }
     
     private func sendReply(to recipient: String, text: String) {
-        Task {
-            let tool = IMessageTool()
-            let args = IMessageTool.Arguments(recipient: recipient, text: text, service: "auto")
-            _ = try? await tool.call(arguments: args)
+        // App-controlled direct send to the known requester only (not the LLM tool path).
+        Task { @MainActor in
+            try? await IMessageDirectSender.send(recipient: recipient, text: text, service: "auto")
         }
     }
 }

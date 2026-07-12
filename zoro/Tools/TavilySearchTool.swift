@@ -12,6 +12,7 @@ import FoundationModels
 struct TavilySearchTool: Tool {
     let name = "tavily_search"
     let description = "Search the web and perform deep research using the Tavily API. Returns a list of matching search results or a synthesized research answer."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct Arguments {
@@ -26,7 +27,10 @@ struct TavilySearchTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        // Retrieve the API key from macOS Keychain
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
+            return permissionError
+        }
+
         guard let apiKey = KeychainHelper.retrieve(key: "tavily_api_key"), !apiKey.isEmpty else {
             return "Error: Tavily API Key is missing. Please enter your Tavily API Key in the Settings panel of the Zoro app."
         }
@@ -47,46 +51,46 @@ struct TavilySearchTool: Tool {
             "max_results": maxRes
         ]
         
-        let stepId = await WorkspaceManager.shared.addResearchStep("Searching Web: \(arguments.query) (\(depth) depth)")
-        
+        let stepId = WorkspaceManager.shared.addResearchStep("Searching Web: \(arguments.query) (\(depth) depth)")
+
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: payload, options: [])
             request.httpBody = jsonData
-            
+
             let (data, response) = try await URLSession.shared.data(for: request)
-            
+
             guard let httpResponse = response as? HTTPURLResponse else {
-                await WorkspaceManager.shared.failResearchStep(id: stepId)
+                WorkspaceManager.shared.failResearchStep(id: stepId)
                 return "Error: Received invalid network response from Tavily."
             }
-            
+
             guard httpResponse.statusCode == 200 else {
-                await WorkspaceManager.shared.failResearchStep(id: stepId)
+                WorkspaceManager.shared.failResearchStep(id: stepId)
                 let errorMsg = String(data: data, encoding: .utf8) ?? "Status code: \(httpResponse.statusCode)"
                 return "Error: Tavily API request failed. Details: \(errorMsg)"
             }
-            
+
             let decoder = JSONDecoder()
             let tavilyResponse = try decoder.decode(TavilyResponse.self, from: data)
-            
+
             var lines = [String]()
             lines.append("### Web Research Results for: '\(arguments.query)'")
-            
+
             if let answer = tavilyResponse.answer, !answer.isEmpty {
                 lines.append("\n**Synthesized Answer:**\n\(answer)\n")
             }
-            
+
             lines.append("\n**Sources Found:**")
             for (idx, result) in tavilyResponse.results.enumerated() {
                 lines.append("\(idx + 1). [\(result.title)](\(result.url)) (Score: \(result.score))")
                 lines.append("   *Summary:* \(result.content)\n")
             }
-            
-            await WorkspaceManager.shared.completeResearchStep(id: stepId)
+
+            WorkspaceManager.shared.completeResearchStep(id: stepId)
             return lines.joined(separator: "\n")
-            
+
         } catch {
-            await WorkspaceManager.shared.failResearchStep(id: stepId)
+            WorkspaceManager.shared.failResearchStep(id: stepId)
             return "Error executing web search: \(error.localizedDescription)"
         }
     }

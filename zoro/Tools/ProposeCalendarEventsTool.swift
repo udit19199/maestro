@@ -10,6 +10,7 @@ import FoundationModels
 struct ProposeCalendarEventsTool: Tool {
     let name = "propose_calendar_events"
     let description = "Propose one or more calendar events for user confirmation. Does not create events until the user confirms in chat."
+    let executionContext: AgentExecutionContext
 
     @Generable
     struct ProposedEvent: Codable {
@@ -36,6 +37,9 @@ struct ProposeCalendarEventsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        if let permissionError = SecurityPolicy.toolPermissionError(for: name, context: executionContext) {
+            return permissionError
+        }
         guard !arguments.events.isEmpty else {
             return "Error: no events provided."
         }
@@ -56,7 +60,9 @@ struct ProposeCalendarEventsTool: Tool {
             return "Error: all proposed events were invalid."
         }
 
-        await WorkspaceManager.shared.setPendingCalendarProposals(proposals)
+        var existing = WorkspaceManager.shared.pendingCalendarProposals
+        existing.append(contentsOf: proposals)
+        WorkspaceManager.shared.setPendingCalendarProposals(existing)
         let count = proposals.count
         return "Proposed \(count) calendar event\(count == 1 ? "" : "s") for user confirmation. Waiting for approval before creating."
     }

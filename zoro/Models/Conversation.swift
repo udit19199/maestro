@@ -30,6 +30,8 @@ struct Conversation: Identifiable, Codable, Equatable, Sendable {
     var updatedAt: Date
     var tutoringMetadata: TutoringMetadata?
     var source: ConversationSource
+    /// Set once for iMessage-sourced threads (chat.db handle). Used for authorization.
+    var remoteRequester: String?
 
     init(
         id: UUID = UUID(),
@@ -39,7 +41,8 @@ struct Conversation: Identifiable, Codable, Equatable, Sendable {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         tutoringMetadata: TutoringMetadata? = nil,
-        source: ConversationSource = .desktop
+        source: ConversationSource = .desktop,
+        remoteRequester: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -49,15 +52,46 @@ struct Conversation: Identifiable, Codable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.tutoringMetadata = tutoringMetadata
         self.source = source
+        self.remoteRequester = remoteRequester
     }
 
-    static func new(agentType: AgentType, source: ConversationSource = .desktop) -> Conversation {
+    static func new(
+        agentType: AgentType,
+        source: ConversationSource = .desktop,
+        remoteRequester: String? = nil
+    ) -> Conversation {
         let greeting = StoredMessage(role: .assistant, content: agentType.greeting)
         return Conversation(
             title: "New Chat",
             agentType: agentType,
             messages: [greeting],
-            source: source
+            source: source,
+            remoteRequester: remoteRequester
         )
+    }
+
+    /// Derives tool authorization context. iMessage without requester → fail closed.
+    func executionContext() -> Result<AgentExecutionContext, ConversationSecurityError> {
+        switch source {
+        case .desktop:
+            return .success(.local)
+        case .imessage:
+            let requester = remoteRequester?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !requester.isEmpty else {
+                return .failure(.missingRemoteRequester)
+            }
+            return .success(.iMessage(requester: requester))
+        }
+    }
+}
+
+enum ConversationSecurityError: Error, LocalizedError, Equatable {
+    case missingRemoteRequester
+
+    var errorDescription: String? {
+        switch self {
+        case .missingRemoteRequester:
+            return "Error: This iMessage conversation is missing a bound requester. Remote tools are disabled. Send a new `zoro:` command to start a fresh session."
+        }
     }
 }

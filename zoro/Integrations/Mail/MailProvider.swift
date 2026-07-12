@@ -8,7 +8,8 @@ import Foundation
 // MARK: - Protocol
 
 protocol MailProvider: Sendable {
-    var accountId: UUID { get }
+    /// Must be readable from `MailSyncActor` and other non-MainActor contexts.
+    nonisolated var accountId: UUID { get }
 
     func fetchUnread(limit: Int) async throws -> MailFetchResult
     func search(query: String, limit: Int) async throws -> MailFetchResult

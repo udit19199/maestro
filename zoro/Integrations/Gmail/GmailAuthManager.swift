@@ -98,7 +98,7 @@ final class GmailAuthManager: ObservableObject {
                 MailAccountStore.shared.updateAccount(updated)
             }
 
-            Task { await GmailManager.shared.refreshSnapshot() }
+            Task { await MailManager.shared.refreshSnapshot() }
         } catch {
             refreshLocalConnectionState()
         }
@@ -180,7 +180,7 @@ final class GmailAuthManager: ObservableObject {
         removeLegacyKeysIfMigrated()
 
         Task {
-            await GmailManager.shared.refreshSnapshot()
+            await MailManager.shared.refreshSnapshot()
             await MainActor.run { WorkspaceManager.shared.invalidateSessionsForConfigChange() }
         }
 
@@ -197,13 +197,8 @@ final class GmailAuthManager: ObservableObject {
         MailAccountStore.shared.removeAccount(id: accountId)
         refreshLocalConnectionState()
 
-        if !isConnected {
-            GmailManager.shared.unreadCount = nil
-            GmailManager.shared.inboxPreview = []
-            GmailManager.shared.stopAutoRefresh()
-        }
-
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
+        Task { await MailManager.shared.refreshSnapshot() }
     }
 
     /// Disconnects all Gmail accounts (legacy single-account API).
@@ -215,10 +210,8 @@ final class GmailAuthManager: ObservableObject {
         }
         isConnected = false
         connectedEmail = nil
-        GmailManager.shared.unreadCount = nil
-        GmailManager.shared.inboxPreview = []
-        GmailManager.shared.stopAutoRefresh()
         WorkspaceManager.shared.invalidateSessionsForConfigChange()
+        Task { await MailManager.shared.refreshSnapshot() }
     }
 
     func getValidAccessToken(accountId: UUID) async throws -> String {

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		4E2244C22FE4FDFB007CC9B9 /* MailCore2 in Frameworks */ = {isa = PBXBuildFile; productRef = 4E2244C12FE4FDFB007CC9B9 /* MailCore2 */; };
-		4EF751FF2FE55F8C00AAFCF6 /* ClaudeForFoundationModels in Frameworks */ = {isa = PBXBuildFile; productRef = 4E2244B12FE4FDFB007CC9B9 /* ClaudeForFoundationModels */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,7 +43,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4EF751FF2FE55F8C00AAFCF6 /* ClaudeForFoundationModels in Frameworks */,
 				4E2244C22FE4FDFB007CC9B9 /* MailCore2 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -97,7 +95,6 @@
 			);
 			name = zoro;
 			packageProductDependencies = (
-				4E2244B12FE4FDFB007CC9B9 /* ClaudeForFoundationModels */,
 				4E2244C12FE4FDFB007CC9B9 /* MailCore2 */,
 			);
 			productName = zoro;
@@ -154,7 +151,6 @@
 			mainGroup = 4E2244972FE4FDFB007CC9B9;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				4E2244B02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "ClaudeForFoundationModels" */,
 				4E2244C02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "mailcore2" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -339,10 +335,14 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Zoro reads and creates calendar events you confirm.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Zoro reads and creates reminders you confirm.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -354,6 +354,7 @@
 					"-lresolv",
 					"-ObjC",
 				);
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
 				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.zoro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -376,10 +377,14 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Zoro reads and creates calendar events you confirm.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Zoro reads and creates reminders you confirm.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -391,6 +396,7 @@
 					"-lresolv",
 					"-ObjC",
 				);
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
 				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.zoro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -468,14 +474,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		4E2244B02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "ClaudeForFoundationModels" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/anthropics/ClaudeForFoundationModels.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
-			};
-		};
 		4E2244C02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "mailcore2" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/jsflax/mailcore2";
@@ -487,11 +485,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		4E2244B12FE4FDFB007CC9B9 /* ClaudeForFoundationModels */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4E2244B02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "ClaudeForFoundationModels" */;
-			productName = ClaudeForFoundationModels;
-		};
 		4E2244C12FE4FDFB007CC9B9 /* MailCore2 */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4E2244C02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "mailcore2" */;
