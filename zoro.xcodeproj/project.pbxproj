@@ -7,22 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		4E2244C22FE4FDFB007CC9B9 /* MailCore2 in Frameworks */ = {isa = PBXBuildFile; productRef = 4E2244C12FE4FDFB007CC9B9 /* MailCore2 */; };
+		AA0000000000000000000001 /* zoro-pi.ts in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* zoro-pi.ts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		4E2244BC2FE4FDFB007CC9B9 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4E2244982FE4FDFB007CC9B9 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 4E22449F2FE4FDFB007CC9B9;
-			remoteInfo = zoro;
-		};
+
+
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		AA0000000000000000000002 /* zoro-pi.ts */ = {isa = PBXFileReference; explicitFileType = text; path = zoro/Pi/zoro-pi.ts; sourceTree = SOURCE_ROOT; };
 		4E2244A02FE4FDFB007CC9B9 /* zoro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = zoro.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		4E2244B22FE4FDFB007CC9B9 /* zoroTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = zoroTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+
+
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -31,11 +28,8 @@
 			path = zoro;
 			sourceTree = "<group>";
 		};
-		4E2244B32FE4FDFB007CC9B9 /* zoroTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = zoroTests;
-			sourceTree = "<group>";
-		};
+
+
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -43,17 +37,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4E2244C22FE4FDFB007CC9B9 /* MailCore2 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		4E2244B62FE4FDFB007CC9B9 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+
+
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -61,7 +49,6 @@
 			isa = PBXGroup;
 			children = (
 				4E2244A22FE4FDFB007CC9B9 /* zoro */,
-				4E2244B32FE4FDFB007CC9B9 /* zoroTests */,
 				4E2244A12FE4FDFB007CC9B9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -70,7 +57,6 @@
 			isa = PBXGroup;
 			children = (
 				4E2244A02FE4FDFB007CC9B9 /* zoro.app */,
-				4E2244B22FE4FDFB007CC9B9 /* zoroTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,33 +81,13 @@
 			);
 			name = zoro;
 			packageProductDependencies = (
-				4E2244C12FE4FDFB007CC9B9 /* MailCore2 */,
 			);
 			productName = zoro;
 			productReference = 4E2244A02FE4FDFB007CC9B9 /* zoro.app */;
 			productType = "com.apple.product-type.application";
 		};
-		4E2244B42FE4FDFB007CC9B9 /* zoroTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 4E2244BA2FE4FDFB007CC9B9 /* Build configuration list for PBXNativeTarget "zoroTests" */;
-			buildPhases = (
-				4E2244B52FE4FDFB007CC9B9 /* Sources */,
-				4E2244B62FE4FDFB007CC9B9 /* Frameworks */,
-				4E2244B72FE4FDFB007CC9B9 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				4E2244BB2FE4FDFB007CC9B9 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				4E2244B32FE4FDFB007CC9B9 /* zoroTests */,
-			);
-			name = zoroTests;
-			productName = zoroTests;
-			productReference = 4E2244B22FE4FDFB007CC9B9 /* zoroTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
+
+
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -135,10 +101,8 @@
 					4E22449F2FE4FDFB007CC9B9 = {
 						CreatedOnToolsVersion = 26.5;
 					};
-					4E2244B42FE4FDFB007CC9B9 = {
-						CreatedOnToolsVersion = 26.5;
-						TestTargetID = 4E22449F2FE4FDFB007CC9B9;
-					};
+
+
 				};
 			};
 			buildConfigurationList = 4E22449B2FE4FDFB007CC9B9 /* Build configuration list for PBXProject "zoro" */;
@@ -151,7 +115,6 @@
 			mainGroup = 4E2244972FE4FDFB007CC9B9;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				4E2244C02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "mailcore2" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4E2244A12FE4FDFB007CC9B9 /* Products */;
@@ -159,7 +122,6 @@
 			projectRoot = "";
 			targets = (
 				4E22449F2FE4FDFB007CC9B9 /* zoro */,
-				4E2244B42FE4FDFB007CC9B9 /* zoroTests */,
 			);
 		};
 /* End PBXProject section */
@@ -169,16 +131,12 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000001 /* zoro-pi.ts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		4E2244B72FE4FDFB007CC9B9 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+
+
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -189,21 +147,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		4E2244B52FE4FDFB007CC9B9 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+
+
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		4E2244BB2FE4FDFB007CC9B9 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 4E22449F2FE4FDFB007CC9B9 /* zoro */;
-			targetProxy = 4E2244BC2FE4FDFB007CC9B9 /* PBXContainerItemProxy */;
-		};
+
+
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -334,15 +284,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "Zoro reads and creates calendar events you confirm.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Zoro reads and creates reminders you confirm.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -376,15 +324,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCalendarsUsageDescription = "Zoro reads and creates calendar events you confirm.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSRemindersUsageDescription = "Zoro reads and creates reminders you confirm.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -409,38 +355,8 @@
 			};
 			name = Release;
 		};
-		4E2244B82FE4FDFB007CC9B9 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.zoroTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/zoro.app/Contents/MacOS/zoro";
-			};
-			name = Debug;
-		};
-		4E2244B92FE4FDFB007CC9B9 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.zoroTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/zoro.app/Contents/MacOS/zoro";
-			};
-			name = Release;
-		};
+
+
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -462,35 +378,10 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		4E2244BA2FE4FDFB007CC9B9 /* Build configuration list for PBXNativeTarget "zoroTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				4E2244B82FE4FDFB007CC9B9 /* Debug */,
-				4E2244B92FE4FDFB007CC9B9 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
+
+
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		4E2244C02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "mailcore2" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/jsflax/mailcore2";
-			requirement = {
-				kind = revision;
-				revision = 38a6d37ddcc4c8bd877d8904068169f725468f0a;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		4E2244C12FE4FDFB007CC9B9 /* MailCore2 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4E2244C02FE4FDFB007CC9B9 /* XCRemoteSwiftPackageReference "mailcore2" */;
-			productName = MailCore2;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4E2244982FE4FDFB007CC9B9 /* Project object */;
 }

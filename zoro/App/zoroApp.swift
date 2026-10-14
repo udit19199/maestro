@@ -17,6 +17,10 @@ struct zoroApp: App {
         }
         .defaultSize(width: 900, height: 600)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { NotificationCenter.default.post(name: .zoroSettings, object: nil) }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Chat") {
                     NotificationCenter.default.post(name: .zoroNewChat, object: nil)
@@ -29,9 +33,7 @@ struct zoroApp: App {
             MenuBarContent()
         }
 
-        Settings {
-            SettingsView()
-        }
+
     }
 }
 
@@ -45,7 +47,8 @@ private struct MenuBarContent: View {
         }
         Divider()
         Button("Settings…") {
-            openZoroSettings()
+            AppDelegate.activateMainWindow()
+            NotificationCenter.default.post(name: .zoroSettings, object: nil)
         }
         .keyboardShortcut(",", modifiers: .command)
         Divider()
@@ -57,5 +60,6 @@ private struct MenuBarContent: View {
 }
 
 extension Notification.Name {
+    static let zoroSettings = Notification.Name("zoroSettings")
     static let zoroNewChat = Notification.Name("zoroNewChat")
 }

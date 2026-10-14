@@ -1,61 +1,51 @@
 # Zoro
 
-Native macOS personal AI assistant built with SwiftUI and Apple's `FoundationModels` framework. Briefing-first home, specialized agents, persistent conversations, and **human-in-the-loop** controls for irreversible actions.
-
-## Requirements
-
-- macOS 27.0+
-- Xcode 26.x+ on a Mac with Apple Intelligence support (or configure OpenAI or Codex in Settings)
-- Full Disk Access (only if using iMessage remote commands)
+Native macOS app for custom bots and persistent conversations. Every bot runs through pi RPC. Pi owns inference credentials and MCP authentication.
 
 ## Build and run
 
-1. Open `zoro.xcodeproj` in Xcode.
-2. Select the **zoro** scheme and a macOS destination.
-3. Build and run (⌘R).
-4. On first launch, open **Settings** (⌘,) and configure a model backend. Attach a workspace folder under **Workspace** only if you need file or terminal tools.
+Requires macOS 27+, Xcode, Node 22.19+, and pi 1.2.0. The current development machine has pi installed in Zoro's application-support directory.
 
-## Safety model (deterministic)
+1. Open `zoro.xcodeproj`, select the `zoro` scheme, and build and run.
+2. Open Settings in the main Zoro window.
+3. Use the configured local CLIAuthProxy, or select a provider from Settings > Providers and use its supported sign-in method.
+4. Select a default model from the models pi reports.
+5. Create a bot conversation from Home or New Chat.
 
-Side effects are enforced in **Swift code**, not system prompts:
+Setup does not require the user to operate pi or run terminal commands.
 
-| Action | Behavior |
-|--------|----------|
-| Send email | Draft only → **Confirm** in app bar |
-| Send iMessage | Staged → **Confirm** in app bar |
-| Shell command | Staged → **Run** in app bar |
-| Create calendar event / reminder | Staged → **Confirm** in app bar |
-| Delete event / complete reminder | Staged → **Confirm** in app bar |
-| Remote iMessage session | Read-oriented tools only; no free-fire send/shell/memory |
-| Workspace paths | Symlink-safe containment + security-scoped bookmarks |
+## Notion
 
-Leave **iMessage Command Listener** off unless you need remote access. Whitelist at least one sender; passcode is optional but recommended.
+In Settings > MCP servers, select Connect beside Notion. Zoro calls pi's native `mcp add` and `mcp login` commands. Pi owns server configuration, OAuth, token refresh, discovery, and tool execution. Local agent sessions use enabled servers from `mcp.json`. Imported remote chats retain MCP restrictions. Calls that are not marked read-only require approval in Zoro.
 
-## Tests
+Chat deletion is available in the conversation header and the sidebar context menu. It stops the conversation process and removes the chat from the saved list.
 
-Run unit tests with ⌘U in Xcode on macOS (`zoroTests`: mail, Gmail parsing, Codex, **SecurityPolicy**).
+## Credential ownership
 
-## Documentation
+Pi's configuration and credentials live in `~/Library/Application Support/Zoro/pi/agent/`. Bot definitions and conversation snapshots contain no secrets. Bot definitions live in `bots/<bot-id>/definition.json`. Chats store only the selected bot ID, not its instructions or model. Loading an old chat moves its embedded definition into the store before saving the chat in the new format. All bot processes share that pi configuration. Child environments include only basic OS environment values and the pi directory, not ambient provider keys.
 
-| Document | Purpose |
-|---|---|
-| [docs/PRODUCT.md](./docs/PRODUCT.md) | Product vision, agents, flows, non-goals |
-| [docs/DESIGN.md](./docs/DESIGN.md) | Visual system and UI components |
-| [.agents/AGENTS.md](./.agents/AGENTS.md) | Architecture, conventions, and agent integration guide |
-| [reference/mail-setup.md](./reference/mail-setup.md) | Multi-account mail setup |
-| [reference/gmail-setup.md](./reference/gmail-setup.md) | Gmail OAuth setup |
+The local CLIAuthProxy provider uses pi’s `models.json` and reads its client key from the proxy’s existing config at request time. It does not copy the key into Zoro’s credential store. The inference and Notion paths do not access Keychain. Earlier development credential copies are not imported, read, or removed by this runtime.
 
-## Remote iMessage commands
+## Current scope
 
-Whitelisted senders can text:
+Existing bot definitions, pi conversations, provider authentication, model selection from pi’s catalog, and native MCP setup. Bot creation and editing are not included. Memory, briefing, mail, calendar, iMessage startup, and automatic login-item registration are removed from the active product flow. The unused native integrations and their tools have been removed. Automatic specialist delegation is a later step.
 
-```
-zoro: [passcode ]research:|plan:|teach: <command>
-```
+Run `bash scripts/check-bot-chats.sh` to check bot selection, persistence, and old-chat migration in an isolated application-support directory. Build and direct app inspection cover the native UI.
 
-Each command starts a new conversation bound to that sender. Model-initiated outbound texts still require on-Mac confirmation; system replies to the requester use an app-controlled path.
+## Official references
 
-## Limitations
+- [Pi provider authentication](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md)
+- [Pi credential SDK example](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/sdk/09-api-keys-and-oauth.ts)
+- [Pi RPC](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md)
+- [Pi MCP](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md)
+- [Notion MCP](https://developers.notion.com/guides/mcp/overview)
 
-- Cannot be built on Linux or in cloud agent VMs (Apple-only frameworks).
-- Notes create/append still apply immediately on desktop (denied over remote).
+## Source layout
+
+- `Agents`: bot definitions and the saved bot store.
+- `Conversations`: chat records and persistence.
+- `Pi`: RPC process transport, running conversation sessions, provider/MCP settings, and `zoro-pi.ts`.
+- `Views`: SwiftUI screens.
+- `App`: window and application lifecycle.
+
+`zoro-pi.ts` is a pi extension copied into the app bundle by Xcode. Pi loads it to expose its provider catalog and login prompts to the native UI, and to request approval for MCP tool calls. Pi still owns provider authentication and MCP execution.

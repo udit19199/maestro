@@ -8,56 +8,48 @@
 import SwiftUI
 
 struct NewChatSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var conversationStore = ConversationStore.shared
+  @Environment(\.dismiss) private var dismiss
+  @ObservedObject private var conversationStore = ConversationStore.shared
 
-    @State private var selectedAgent: AgentType = .default
+  @ObservedObject private var bots = BotLibrary.shared
+  @State private var selectedBot: UUID?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("New Chat")
-                .font(.title2)
-                .fontWeight(.semibold)
+  var body: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      Text("New Chat")
+        .font(.title2)
+        .fontWeight(.semibold)
 
-            Text("Choose an agent for this conversation. You can't switch agents mid-thread in v1.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+      Text("Choose a bot to start with. You can switch bots later.")
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
 
-            HStack(spacing: 8) {
-                ForEach(AgentType.allCases) { agent in
-                    Button {
-                        selectedAgent = agent
-                    } label: {
-                        Label(agent.displayName, systemImage: agent.systemImage)
-                            .font(.caption)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.plain)
-                    .background(
-                        Capsule()
-                            .fill(selectedAgent == agent ? Color.accentColor : Color(NSColor.controlBackgroundColor))
-                    )
-                    .foregroundStyle(selectedAgent == agent ? .white : .secondary)
-                }
-            }
+      if let error = bots.loadError { Text(error).foregroundStyle(.red) }
 
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
+      Picker("Bot", selection: $selectedBot) {
+        ForEach(bots.bots) { Text($0.name).tag(Optional($0.id)) }
+      }
 
-                Button("Create") {
-                    conversationStore.createConversation(agentType: selectedAgent)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-            }
+      HStack {
+        Spacer()
+        Button("Cancel") {
+          dismiss()
         }
-        .padding(24)
-        .frame(width: 480)
+        .keyboardShortcut(.cancelAction)
+
+        Button("Create") {
+          if let bot = bots.bots.first(where: { $0.id == selectedBot }) {
+            conversationStore.createConversation(bot: bot)
+          }
+          dismiss()
+        }
+        .disabled(selectedBot == nil)
+        .keyboardShortcut(.defaultAction)
+        .buttonStyle(.borderedProminent)
+      }
     }
+    .onAppear { selectedBot = bots.bots.first?.id }
+    .padding(24)
+    .frame(width: 480)
+  }
 }

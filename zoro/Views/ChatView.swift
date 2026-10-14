@@ -1,311 +1,71 @@
-//
-//  ChatView.swift
-//  zoro
-//
-
 import SwiftUI
 
 struct ChatView: View {
-    let conversationID: UUID
+  let conversationID: UUID
+  @ObservedObject private var store = ConversationStore.shared
+  @ObservedObject private var runner = PiSessions.shared
+  @ObservedObject private var bots = BotLibrary.shared
+  @State private var prompt = ""
 
-    @ObservedObject private var conversationStore = ConversationStore.shared
-    @ObservedObject private var workspace = WorkspaceManager.shared
-    @ObservedObject private var agentRunner = AgentRunner.shared
-    @ObservedObject private var profileStore = ProfileStore.shared
-
-    @State private var prompt = ""
-    @State private var handoffSuggestion: AgentHandoffDetector.Suggestion?
-
-    private var conversation: Conversation? {
-        conversationStore.conversation(id: conversationID)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if let conversation {
-                chatHeader(conversation: conversation)
-
-                if profileStore.showMemoryUpdatedBanner {
-                    memoryUpdatedBanner
-                }
-
-                if let handoffSuggestion, conversation.agentType == .default {
-                    agentHandoffBanner(handoffSuggestion)
-                }
-
-                // Side-effect confirms live in PendingActionsBar (AppShell).
-
-                if !workspace.activeTodos.isEmpty {
-                    executionPlanPanel
-                }
-
-                if !workspace.researchSteps.isEmpty {
-                    researchProgressPanel
-                }
-
-                messageList(messages: conversation.messages)
-
-                ComposerView(
-                    style: .full,
-                    placeholder: composerPlaceholder,
-                    isRunning: agentRunner.isRunning(conversationID: conversationID),
-                    isDisabled: false,
-                    text: $prompt,
-                    onSend: sendMessage
-                )
-            } else {
-                ContentUnavailableView("Conversation not found", systemImage: "bubble.left.and.bubble.right")
+  var body: some View {
+    if let conversation = store.conversation(id: conversationID) {
+      VStack(spacing: 0) {
+        HStack {
+          Picker(
+            "Bot",
+            selection: Binding(
+              get: { conversation.botID },
+              set: { store.selectBot($0, for: conversationID) }
+            )
+          ) {
+            if bots.bot(id: conversation.botID) == nil {
+              Text("Unavailable bot").tag(conversation.botID)
             }
-        }
-        .onChange(of: conversation?.messages.count) { _, _ in
-            updateHandoffSuggestion()
-        }
-    }
-
-    private var memoryUpdatedBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "brain.head.profile")
-                .foregroundStyle(.secondary)
-            Text("Memory updated")
-                .font(.subheadline)
-            Spacer()
-            Button("Review") {
-                openZoroSettings()
-                profileStore.dismissMemoryBanner()
+            ForEach(bots.bots) { Text($0.name).tag($0.id) }
+          }
+          .disabled(runner.isRunning(conversationID: conversationID))
+          Spacer()
+          Button("Delete Chat", role: .destructive) { store.deleteConversation(conversationID) }
+          if runner.isRunning(conversationID: conversationID) {
+            Button("Stop") { runner.stopConversation(conversationID) }
+          }
+        }.padding()
+        if let approval = runner.approval(for: conversationID) {
+          VStack(alignment: .leading, spacing: 8) {
+            Text(approval.title).font(.headline)
+            ScrollView { Text(approval.message).font(.caption).textSelection(.enabled) }.frame(
+              maxHeight: 150)
+            HStack {
+              Button("Approve") { runner.approve(conversationID, allowed: true) }
+              Button("Deny") { runner.approve(conversationID, allowed: false) }
             }
-            .buttonStyle(.borderless)
-            Button {
-                profileStore.dismissMemoryBanner()
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
+          }.padding()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func agentHandoffBanner(_ suggestion: AgentHandoffDetector.Suggestion) -> some View {
-        HStack(spacing: 12) {
-            Text(suggestion.message)
-                .font(.subheadline)
-            Spacer()
-            Button("Start \(suggestion.agentType.displayName) chat") {
-                conversationStore.createConversation(agentType: suggestion.agentType)
-                handoffSuggestion = nil
-            }
-            .buttonStyle(.borderedProminent)
-            Button {
-                handoffSuggestion = nil
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.borderless)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func chatHeader(conversation: Conversation) -> some View {
-        HStack(spacing: 12) {
-            Label(conversation.agentType.displayName, systemImage: conversation.agentType.systemImage)
-                .font(.headline)
-
-            Text(conversation.agentType.displayName)
-                .font(.caption2)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.accentColor.opacity(conversation.agentType == .default ? 0.1 : 0.18))
-                .foregroundStyle(conversation.agentType == .default ? Color.secondary : Color.accentColor)
-                .clipShape(Capsule())
-
-            if conversation.source == .imessage {
-                Text("iMessage")
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .clipShape(Capsule())
-            }
-
-            Spacer()
-
-            Circle()
-                .fill(modelStatusColor)
-                .frame(width: 8, height: 8)
-                .help(modelStatusHelp)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(NSColor.windowBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-    }
-
-    private var modelStatusColor: Color {
-        return .green
-    }
-
-    private var modelStatusHelp: String {
-        guard let agent = conversation?.agentType else { return "Model status" }
-        switch agent {
-        case .default:
-            return "Using \(workspace.selectedModelType.rawValue)"
-        default:
-            let preferred = ModelType.preferredForSpecializedAgents()
-            return "Using \(preferred.rawValue)"
-        }
-    }
-
-    private var composerPlaceholder: String {
-        if let question = workspace.activeClarificationQuestion {
-            return "Zoro needs reply: \(question)"
-        }
-        return "Ask anything, search the web, check your calendar…"
-    }
-
-    private var executionPlanPanel: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Execution Plan")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-
-            ForEach(workspace.activeTodos) { todo in
-                HStack(spacing: 8) {
-                    Image(systemName: todoIcon(for: todo.status))
-                        .font(.system(size: 11))
-                        .foregroundStyle(todoColor(for: todo.status))
-                    Text(todo.content)
-                        .font(.caption)
-                        .strikethrough(todo.status == "completed")
-                        .foregroundStyle(todo.status == "completed" ? .secondary : .primary)
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding([.horizontal, .top])
-    }
-
-    private var researchProgressPanel: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Research Progress")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-
-            ForEach(workspace.researchSteps) { step in
-                HStack(spacing: 8) {
-                    Image(systemName: researchStepIcon(for: step.status))
-                        .font(.system(size: 11))
-                        .foregroundStyle(researchStepColor(for: step.status))
-                    Text(step.title)
-                        .font(.caption)
-                        .strikethrough(step.status == "completed")
-                        .foregroundStyle(step.status == "completed" ? .secondary : .primary)
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding([.horizontal, .top])
-    }
-
-    private func messageList(messages: [StoredMessage]) -> some View {
+        Divider()
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    ForEach(messages) { message in
-                        MessageBubble(message: message)
-                            .id(message.id)
-                    }
-                }
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
-                .padding()
-            }
-            .background(Color(NSColor.textBackgroundColor))
-            .onChange(of: messages.count) { _, _ in
-                scrollToBottom(proxy: proxy, messages: messages)
-            }
-            .onChange(of: messages.last?.content) { _, _ in
-                scrollToBottom(proxy: proxy, messages: messages)
-            }
+          ScrollView {
+            LazyVStack(spacing: 16) {
+              ForEach(conversation.messages) { message in
+                MessageBubble(message: message).id(message.id)
+              }
+            }.padding()
+          }
+          .onChange(of: conversation.messages.last?.content) { _, _ in
+            if let id = conversation.messages.last?.id { proxy.scrollTo(id, anchor: .bottom) }
+          }
         }
+        ComposerView(
+          placeholder: "Message this bot...",
+          isRunning: runner.isRunning(conversationID: conversationID),
+          isDisabled: bots.bot(id: conversation.botID) == nil, text: $prompt
+        ) {
+          let message = prompt
+          prompt = ""
+          Task { await runner.sendMessage(conversationID: conversationID, text: message) }
+        }
+      }
+    } else {
+      ContentUnavailableView("Conversation not found", systemImage: "bubble.left.and.bubble.right")
     }
-
-    private func scrollToBottom(proxy: ScrollViewProxy, messages: [StoredMessage]) {
-        if let lastMessage = messages.last {
-            withAnimation {
-                proxy.scrollTo(lastMessage.id, anchor: .bottom)
-            }
-        }
-    }
-
-    private func sendMessage() {
-        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        prompt = ""
-
-        Task {
-            await agentRunner.sendMessage(conversationID: conversationID, text: text)
-            updateHandoffSuggestion()
-        }
-    }
-
-    private func updateHandoffSuggestion() {
-        guard let conversation, conversation.agentType == .default else {
-            handoffSuggestion = nil
-            return
-        }
-        if let lastUser = conversation.messages.last(where: { $0.role == .user }) {
-            handoffSuggestion = AgentHandoffDetector.suggest(for: lastUser.content)
-        }
-    }
-
-    private func todoIcon(for status: String) -> String {
-        switch status {
-        case "completed": return "checkmark.circle.fill"
-        case "in_progress": return "arrow.triangle.2.circlepath.circle.fill"
-        case "cancelled": return "xmark.circle.fill"
-        default: return "circle"
-        }
-    }
-
-    private func todoColor(for status: String) -> Color {
-        switch status {
-        case "completed": return .green
-        case "in_progress": return .blue
-        case "cancelled": return .gray
-        default: return .secondary
-        }
-    }
-
-    private func researchStepIcon(for status: String) -> String {
-        switch status {
-        case "completed": return "checkmark.circle.fill"
-        case "in_progress": return "arrow.triangle.2.circlepath.circle.fill"
-        case "failed": return "exclamationmark.circle.fill"
-        default: return "circle"
-        }
-    }
-
-    private func researchStepColor(for status: String) -> Color {
-        switch status {
-        case "completed": return .green
-        case "in_progress": return .blue
-        case "failed": return .red
-        default: return .secondary
-        }
-    }
+  }
 }

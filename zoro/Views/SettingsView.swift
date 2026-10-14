@@ -1,453 +1,112 @@
-//
-//  SettingsView.swift
-//  zoro
-//
-
 import SwiftUI
-import FoundationModels
-import ServiceManagement
 
 struct SettingsView: View {
-    @ObservedObject private var workspace = WorkspaceManager.shared
-    @ObservedObject private var profileStore = ProfileStore.shared
-    @ObservedObject private var briefingService = BriefingService.shared
-    @ObservedObject private var codexAuth = CodexAuthManager.shared
+  @ObservedObject private var pi = PiSettings.shared
+  @AppStorage("pi_model") private var model = "cliauthproxy/gpt-6.1-sol"
+  private enum Page: String {
+    case providers = "Providers"
+    case mcp = "MCP servers"
+  }
+  @State private var page: Page?
+  @State private var input = ""
 
-    @State private var openaiApiKey = ""
-    @State private var tavilyApiKey = ""
-    @State private var codexModelName = "gpt-5-codex"
-    @State private var codexStatusMessage = "Not connected"
-    @State private var modelAvailabilityMessage = "Checking availability..."
-    @State private var isModelReady = false
-
-    @State private var imessageListenerEnabled = false
-    @State private var imessageSenderWhitelist = ""
-    @State private var imessagePasscode = ""
-    @State private var hasFullDiskAccess = true
-    @State private var launchAtLogin = false
-    @State private var loginItemError: String?
-    @State private var editingFactID: UUID?
-    @State private var editingFactText = ""
-    @State private var newFactText = ""
-
-    @AppStorage("hide_dock_icon") private var hideDockIcon = true
-
-    var body: some View {
-        TabView {
-            generalTab
-                .tabItem { Label("General", systemImage: "gearshape") }
-            mailTab
-                .tabItem { Label("Mail", systemImage: "envelope") }
-            memoryTab
-                .tabItem { Label("Memory", systemImage: "brain.head.profile") }
+  var body: some View {
+    VStack {
+      if let page {
+        HStack {
+          Button("Settings") {
+            pi.cancel()
+            self.page = nil
+          }
+          Text(page.rawValue).font(.headline)
+          Spacer()
+        }.padding()
+      } else {
+        List {
+          Button("Providers") { page = .providers }
+          Button("MCP servers") { page = .mcp }
         }
-        .frame(minWidth: 520, minHeight: 480)
-        .onAppear(perform: loadSettings)
-    }
-
-    private var generalTab: some View {
+      }
+      if let page {
         Form {
+          if let request = pi.inputRequest {
+            Section(request.title) {
+              switch request.kind {
+              case .select(let options):
+                Picker("Choose", selection: $input) {
+                  Text("Choose an option").tag("")
+                  ForEach(options, id: \.self) { Text($0).tag($0) }
+                }
+              case .secret:
+                SecureField("API key", text: $input)
+              case .text:
+                TextField(request.title, text: $input)
+              }
+              HStack {
+                Button("Continue") {
+                  pi.submitInput(input)
+                  input = ""
+                }.disabled(input.isEmpty)
+                Button("Cancel") {
+                  pi.cancel()
+                  input = ""
+                }
+              }
+            }
+          }
+          if page == .providers {
+            Section("Supported providers") {
+              ForEach(pi.providers) { provider in
+                HStack {
+                  Text(provider.name)
+                  Spacer()
+                  if provider.connected { Text("Configured").foregroundStyle(.secondary) }
+                  if provider.apiKey {
+                    Button("API key") { pi.connect(provider: provider.id, method: .apiKey) }
+                  }
+                  if provider.oauth {
+                    Button("Sign in") { pi.connect(provider: provider.id, method: .oauth) }
+                  }
+                  if !provider.apiKey && !provider.oauth && !provider.connected {
+                    Text("Requires provider configuration").foregroundStyle(.secondary)
+                  }
+                }
+              }
+            }.disabled(pi.busy)
             Section("Model") {
-                Picker("Active Backend", selection: $workspace.selectedModelType) {
-                    ForEach(ModelType.allCases) { type in
-                        Text(type.rawValue).tag(type)
-                    }
-                }
-                .onChange(of: workspace.selectedModelType) { _, newValue in
-                    UserDefaults.standard.set(newValue.rawValue, forKey: "selected_model_type")
-                    updateModelAvailability()
-                    workspace.resetSession()
-                }
-
-                Text("Research, Planner, and Teach prefer OpenAI when an OpenAI key is set.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                SecureField("OpenAI API Key (sk-…)", text: $openaiApiKey)
-                    .onChange(of: openaiApiKey) { _, newValue in
-                        KeychainHelper.save(key: "openai_api_key", value: newValue)
-                        updateModelAvailability()
-                        workspace.resetSession()
-                    }
-
-                if workspace.selectedModelType == .codex {
-                    Text("Uses your ChatGPT / Codex subscription (same backend as the Codex CLI, not api.openai.com).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    TextField("Codex model name", text: $codexModelName)
-                        .onChange(of: codexModelName) { _, newValue in
-                            UserDefaults.standard.set(newValue, forKey: "codex_model_name")
-                            workspace.invalidateSessionsForConfigChange()
-                            updateModelAvailability()
-                        }
-
-                    HStack(spacing: 12) {
-                        if codexAuth.isConnected {
-                            Button("Disconnect Codex") {
-                                Task {
-                                    await codexAuth.disconnect()
-                                    codexStatusMessage = "Disconnected"
-                                    updateModelAvailability()
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                        } else {
-                            Button(codexAuth.isAuthorizing ? "Signing in..." : "Sign in with ChatGPT") {
-                                Task {
-                                    do {
-                                        try await codexAuth.connect()
-                                        if let email = codexAuth.connectedEmail {
-                                            codexStatusMessage = "Connected as \(email)"
-                                        } else {
-                                            codexStatusMessage = "Connected"
-                                        }
-                                        updateModelAvailability()
-                                    } catch {
-                                        codexStatusMessage = error.localizedDescription
-                                    }
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(codexAuth.isAuthorizing)
-
-                            Button("Import from Codex CLI") {
-                                do {
-                                    try codexAuth.importFromCLI()
-                                    if let email = codexAuth.connectedEmail {
-                                        codexStatusMessage = "Imported credentials for \(email)"
-                                    } else {
-                                        codexStatusMessage = "Imported Codex CLI credentials"
-                                    }
-                                    updateModelAvailability()
-                                } catch {
-                                    codexStatusMessage = error.localizedDescription
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(codexAuth.isAuthorizing)
-
-                            Button("Device Code") {
-                                Task {
-                                    do {
-                                        try await codexAuth.startDeviceCodeLogin()
-                                        if let email = codexAuth.connectedEmail {
-                                            codexStatusMessage = "Connected as \(email)"
-                                        } else {
-                                            codexStatusMessage = "Connected"
-                                        }
-                                        updateModelAvailability()
-                                    } catch {
-                                        codexStatusMessage = error.localizedDescription
-                                    }
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(codexAuth.isAuthorizing)
-                        }
-                    }
-
-                    if let prompt = codexAuth.deviceCodePrompt {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("1. Visit: \(prompt.verificationURL)")
-                            Text("2. Enter code: \(prompt.userCode)")
-                                .font(.system(.body, design: .monospaced))
-                                .bold()
-                            Text("Waiting for authorization...")
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.caption)
-                    }
-
-                    HStack(spacing: 8) {
-                        Image(systemName: codexAuth.isConnected ? "checkmark.circle.fill" : "terminal.fill")
-                            .foregroundStyle(codexAuth.isConnected ? .green : .secondary)
-                        Text(codexStatusMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                SecureField("Tavily API Key (tvly-…)", text: $tavilyApiKey)
-                    .onChange(of: tavilyApiKey) { _, newValue in
-                        KeychainHelper.save(key: "tavily_api_key", value: newValue)
-                    }
-
-                HStack(spacing: 8) {
-                    Image(systemName: isModelReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(isModelReady ? .green : .orange)
-                    Text(modelAvailabilityMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+              Picker("Default model", selection: $model) {
+                Text("Choose a model").tag("")
+                if !pi.models.contains(where: { $0.id == model }) { Text(model).tag(model) }
+                ForEach(pi.models) { Text($0.name).tag($0.id) }
+              }.onChange(of: model) { _, _ in PiSessions.shared.stopAll() }
+              Button("Refresh providers") { pi.refreshProviders() }.disabled(pi.busy)
             }
-
-            Section("Briefing") {
-                Picker("Background refresh interval", selection: Binding(
-                    get: { briefingService.refreshIntervalHours },
-                    set: { briefingService.refreshIntervalHours = $0 }
-                )) {
-                    Text("2 hours").tag(2.0)
-                    Text("3 hours").tag(3.0)
-                    Text("4 hours").tag(4.0)
-                }
-            }
-
-            Section("Appearance") {
-                Toggle("Hide Dock icon (menu bar only)", isOn: $hideDockIcon)
-                    .onChange(of: hideDockIcon) { _, newValue in
-                        AppDelegate.applyDockVisibility(hide: newValue)
-                    }
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, newValue in
-                        setLaunchAtLogin(enabled: newValue)
-                    }
-                if let loginItemError {
-                    Text(loginItemError)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            Section("Workspace") {
+          } else {
+            Section("Supported MCP servers") {
+              ForEach(PiSettings.supportedMCPServers) { server in
                 HStack {
-                    Text(workspace.workspaceURL?.path ?? "No folder attached")
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Button("Attach Folder…") {
-                        selectWorkspaceFolder()
-                    }
+                  Text(server.name)
+                  Spacer()
+                  Button("Connect") { pi.connectMCP(server) }
                 }
-                Text("Optional. File and terminal tools scope to an attached folder.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+              }
+            }.disabled(pi.busy)
+          }
+          Text(pi.status).font(.caption).textSelection(.enabled)
+          if pi.busy {
+            Button("Cancel") {
+              pi.cancel()
+              input = ""
             }
-
-            Section("iMessage") {
-                Text("Remote commands can read mail and files for whitelisted senders. Outbound email/text/calendar creates from the model still require on-Mac confirmation. Leave off unless you need remote access.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Enable iMessage Command Listener", isOn: $imessageListenerEnabled)
-                    .onChange(of: imessageListenerEnabled) { _, newValue in
-                        UserDefaults.standard.set(newValue, forKey: "imessage_listener_enabled")
-                        toggleIMessageListener()
-                    }
-
-                if imessageListenerEnabled {
-                    TextField("Whitelisted senders (comma-separated, required)", text: $imessageSenderWhitelist)
-                        .onChange(of: imessageSenderWhitelist) { _, newValue in
-                            UserDefaults.standard.set(newValue, forKey: "imessage_sender_whitelist")
-                        }
-
-                    SecureField("Command passcode (optional but recommended)", text: $imessagePasscode)
-                        .onChange(of: imessagePasscode) { _, newValue in
-                            if newValue.isEmpty {
-                                KeychainHelper.delete(key: "imessage_passcode")
-                            } else {
-                                KeychainHelper.save(key: "imessage_passcode", value: newValue)
-                            }
-                        }
-
-                    if !SecurityPolicy.hasNonEmptyWhitelist(imessageSenderWhitelist) {
-                        Label("Add at least one whitelisted sender or remote commands are ignored.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-
-                    if !hasFullDiskAccess {
-                        Label("Grant Full Disk Access in System Settings for iMessage commands.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    } else {
-                        Label("Full Disk Access granted.", systemImage: "checkmark.shield.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
+          }
+        }.formStyle(.grouped)
+      }
     }
-
-    private var mailTab: some View {
-        SettingsMailAccountsSection()
+    .onDisappear { input = "" }
+    .onChange(of: page) { _, page in
+      pi.status = ""
+      if page == .providers { pi.refreshProviders() }
     }
-
-    private var memoryTab: some View {
-        Form {
-            Section("Profile notes") {
-                TextEditor(text: Binding(
-                    get: { profileStore.profile.freeformNotes },
-                    set: { profileStore.updateFreeformNotes($0) }
-                ))
-                .frame(minHeight: 100)
-            }
-
-            Section("Saved facts") {
-                ForEach(profileStore.profile.facts) { fact in
-                    if editingFactID == fact.id {
-                        TextField("Fact", text: $editingFactText)
-                        HStack {
-                            Button("Save") {
-                                profileStore.updateFact(id: fact.id, text: editingFactText)
-                                editingFactID = nil
-                            }
-                            Button("Cancel") { editingFactID = nil }
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(fact.text)
-                            Text(fact.source.rawValue)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .contextMenu {
-                            Button("Edit") {
-                                editingFactID = fact.id
-                                editingFactText = fact.text
-                            }
-                            Button("Delete", role: .destructive) {
-                                profileStore.deleteFact(id: fact.id)
-                            }
-                        }
-                    }
-                }
-                .onDelete { offsets in
-                    for index in offsets {
-                        let fact = profileStore.profile.facts[index]
-                        profileStore.deleteFact(id: fact.id)
-                    }
-                }
-
-                HStack {
-                    TextField("Add a fact…", text: $newFactText)
-                    Button("Add") {
-                        if profileStore.addFact(newFactText, source: .manual) != nil {
-                            newFactText = ""
-                        }
-                    }
-                    .disabled(newFactText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    private func loadSettings() {
-        openaiApiKey = KeychainHelper.retrieve(key: "openai_api_key") ?? ""
-        tavilyApiKey = KeychainHelper.retrieve(key: "tavily_api_key") ?? ""
-        codexModelName = UserDefaults.standard.string(forKey: "codex_model_name") ?? "gpt-5-codex"
-
-        Task {
-            await codexAuth.refreshConnectionStatus()
-            await MainActor.run {
-                if codexAuth.isConnected, let email = codexAuth.connectedEmail {
-                    codexStatusMessage = "Connected as \(email)"
-                } else if codexAuth.isConnected {
-                    codexStatusMessage = "Connected"
-                } else {
-                    codexStatusMessage = "Not connected"
-                }
-            }
-        }
-
-        imessageListenerEnabled = UserDefaults.standard.bool(forKey: "imessage_listener_enabled")
-        imessageSenderWhitelist = UserDefaults.standard.string(forKey: "imessage_sender_whitelist") ?? ""
-        imessagePasscode = KeychainHelper.retrieve(key: "imessage_passcode") ?? ""
-        hasFullDiskAccess = checkFullDiskAccess()
-        launchAtLogin = (SMAppService.mainApp.status == .enabled)
-
-        let resolvedModel = ModelType.resolved(
-            fromStored: UserDefaults.standard.string(forKey: "selected_model_type")
-        )
-        workspace.selectedModelType = resolvedModel
-        UserDefaults.standard.set(resolvedModel.rawValue, forKey: "selected_model_type")
-
-        updateModelAvailability()
-        profileStore.load()
-
-        if imessageListenerEnabled && hasFullDiskAccess {
-            IMessageListener.shared.start()
-        }
-    }
-
-    private func setLaunchAtLogin(enabled: Bool) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            loginItemError = nil
-        } catch {
-            loginItemError = "Could not update login item: \(error.localizedDescription)"
-            launchAtLogin = (SMAppService.mainApp.status == .enabled)
-        }
-    }
-
-    private func selectWorkspaceFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-
-        if panel.runModal() == .OK, let url = panel.url {
-            workspace.setWorkspaceURL(url)
-            workspace.resetSession()
-        }
-    }
-
-    private func checkFullDiskAccess() -> Bool {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let dbPath = homeDir.appendingPathComponent("Library/Messages/chat.db").path
-        let fd = open(dbPath, O_RDONLY)
-        if fd >= 0 {
-            close(fd)
-            return true
-        }
-        return false
-    }
-
-    private func toggleIMessageListener() {
-        hasFullDiskAccess = checkFullDiskAccess()
-        if imessageListenerEnabled && hasFullDiskAccess {
-            IMessageListener.shared.start()
-        } else {
-            IMessageListener.shared.stop()
-        }
-    }
-
-    private func updateModelAvailability() {
-        Task {
-            switch workspace.selectedModelType {
-            case .openai:
-                await MainActor.run {
-                    if openaiApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        modelAvailabilityMessage = "Please enter your OpenAI API key."
-                        isModelReady = false
-                    } else {
-                        modelAvailabilityMessage = "OpenAI via API key is ready."
-                        isModelReady = true
-                    }
-                }
-            case .codex:
-                await MainActor.run {
-                    if codexAuth.isConnected {
-                        modelAvailabilityMessage = "Codex via ChatGPT subscription is ready."
-                        isModelReady = true
-                    } else {
-                        modelAvailabilityMessage = "Sign in with ChatGPT or import from Codex CLI."
-                        isModelReady = false
-                    }
-                }
-            }
-        }
-    }
-}
-
-#Preview {
-    SettingsView()
+    .onChange(of: pi.inputRequest?.id) { _, _ in input = "" }
+  }
 }
