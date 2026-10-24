@@ -4,7 +4,7 @@ import Foundation
 final class PiRPC {
   static let directory = FileManager.default.urls(
     for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    .appendingPathComponent("Zoro/pi", isDirectory: true)
+    .appendingPathComponent("Maestro/pi", isDirectory: true)
   static let configDirectory = directory.appendingPathComponent("agent", isDirectory: true)
   static var executable: String {
     let bundled = directory.appendingPathComponent("runtime/node_modules/.bin/pi").path
@@ -81,7 +81,7 @@ final class PiRPC {
       args += ["--no-session"]
     }
     if bot == nil || !allowMCP { args += ["--no-mcp"] }
-    guard let bridge = Bundle.main.url(forResource: "zoro-pi", withExtension: "ts") else {
+    guard let bridge = Bundle.main.url(forResource: "maestro-pi", withExtension: "ts") else {
       throw PiError.message("The pi extension is missing from the app bundle.")
     }
     args += ["-e", bridge.path]

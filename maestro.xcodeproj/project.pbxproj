@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000001 /* zoro-pi.ts in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* zoro-pi.ts */; };
+		AA0000000000000000000001 /* maestro-pi.ts in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* maestro-pi.ts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -16,16 +16,16 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		AA0000000000000000000002 /* zoro-pi.ts */ = {isa = PBXFileReference; explicitFileType = text; path = zoro/Pi/zoro-pi.ts; sourceTree = SOURCE_ROOT; };
-		4E2244A02FE4FDFB007CC9B9 /* zoro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = zoro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000002 /* maestro-pi.ts */ = {isa = PBXFileReference; explicitFileType = text; path = maestro/Pi/maestro-pi.ts; sourceTree = SOURCE_ROOT; };
+		4E2244A02FE4FDFB007CC9B9 /* maestro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = maestro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 
 
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		4E2244A22FE4FDFB007CC9B9 /* zoro */ = {
+		4E2244A22FE4FDFB007CC9B9 /* maestro */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = zoro;
+			path = maestro;
 			sourceTree = "<group>";
 		};
 
@@ -48,7 +48,7 @@
 		4E2244972FE4FDFB007CC9B9 = {
 			isa = PBXGroup;
 			children = (
-				4E2244A22FE4FDFB007CC9B9 /* zoro */,
+				4E2244A22FE4FDFB007CC9B9 /* maestro */,
 				4E2244A12FE4FDFB007CC9B9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -56,7 +56,7 @@
 		4E2244A12FE4FDFB007CC9B9 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				4E2244A02FE4FDFB007CC9B9 /* zoro.app */,
+				4E2244A02FE4FDFB007CC9B9 /* maestro.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -64,9 +64,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		4E22449F2FE4FDFB007CC9B9 /* zoro */ = {
+		4E22449F2FE4FDFB007CC9B9 /* maestro */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 4E2244AB2FE4FDFB007CC9B9 /* Build configuration list for PBXNativeTarget "zoro" */;
+			buildConfigurationList = 4E2244AB2FE4FDFB007CC9B9 /* Build configuration list for PBXNativeTarget "maestro" */;
 			buildPhases = (
 				4E22449C2FE4FDFB007CC9B9 /* Sources */,
 				4E22449D2FE4FDFB007CC9B9 /* Frameworks */,
@@ -77,13 +77,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				4E2244A22FE4FDFB007CC9B9 /* zoro */,
+				4E2244A22FE4FDFB007CC9B9 /* maestro */,
 			);
-			name = zoro;
+			name = maestro;
 			packageProductDependencies = (
 			);
-			productName = zoro;
-			productReference = 4E2244A02FE4FDFB007CC9B9 /* zoro.app */;
+			productName = maestro;
+			productReference = 4E2244A02FE4FDFB007CC9B9 /* maestro.app */;
 			productType = "com.apple.product-type.application";
 		};
 
@@ -105,7 +105,7 @@
 
 				};
 			};
-			buildConfigurationList = 4E22449B2FE4FDFB007CC9B9 /* Build configuration list for PBXProject "zoro" */;
+			buildConfigurationList = 4E22449B2FE4FDFB007CC9B9 /* Build configuration list for PBXProject "maestro" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -121,7 +121,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				4E22449F2FE4FDFB007CC9B9 /* zoro */,
+				4E22449F2FE4FDFB007CC9B9 /* maestro */,
 			);
 		};
 /* End PBXProject section */
@@ -131,7 +131,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA0000000000000000000001 /* zoro-pi.ts in Resources */,
+				AA0000000000000000000001 /* maestro-pi.ts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -303,7 +303,7 @@
 					"-ObjC",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
-				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.zoro;
+				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.maestro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -343,7 +343,7 @@
 					"-ObjC",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -Wno-incomplete-umbrella -Xcc -Wno-nullability-completeness";
-				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.zoro;
+				PRODUCT_BUNDLE_IDENTIFIER = uditagarwal.maestro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -360,7 +360,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		4E22449B2FE4FDFB007CC9B9 /* Build configuration list for PBXProject "zoro" */ = {
+		4E22449B2FE4FDFB007CC9B9 /* Build configuration list for PBXProject "maestro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				4E2244A92FE4FDFB007CC9B9 /* Debug */,
@@ -369,7 +369,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		4E2244AB2FE4FDFB007CC9B9 /* Build configuration list for PBXNativeTarget "zoro" */ = {
+		4E2244AB2FE4FDFB007CC9B9 /* Build configuration list for PBXNativeTarget "maestro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				4E2244AC2FE4FDFB007CC9B9 /* Debug */,

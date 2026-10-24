@@ -7,7 +7,7 @@ struct HomeView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
-      Text("Zoro").font(.largeTitle).fontWeight(.semibold)
+      Text("Maestro").font(.largeTitle).fontWeight(.semibold)
       Text("Choose a bot and start a conversation.").foregroundStyle(.secondary)
       if let error = bots.loadError { Text(error).foregroundStyle(.red) }
       ForEach(bots.bots) { bot in

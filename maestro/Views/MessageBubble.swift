@@ -1,6 +1,6 @@
 //
 //  MessageBubble.swift
-//  zoro
+//  maestro
 //
 //  Created by Udit Agarwal on 01/07/26.
 //
@@ -33,7 +33,7 @@ struct MessageBubble: View {
             .clipShape(Circle())
 
           VStack(alignment: .leading, spacing: 4) {
-            Text(message.botID.flatMap { bots.bot(id: $0)?.name } ?? "Zoro")
+            Text(message.botID.flatMap { bots.bot(id: $0)?.name } ?? "Maestro")
               .font(.caption)
               .foregroundStyle(.secondary)
               .fontWeight(.semibold)

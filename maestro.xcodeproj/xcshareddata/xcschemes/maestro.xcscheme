@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "4E22449F2FE4FDFB007CC9B9"
-               BuildableName = "zoro.app"
-               BlueprintName = "zoro"
-               ReferencedContainer = "container:zoro.xcodeproj">
+               BuildableName = "maestro.app"
+               BlueprintName = "maestro"
+               ReferencedContainer = "container:maestro.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -37,9 +37,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4E22449F2FE4FDFB007CC9B9"
-            BuildableName = "zoro.app"
-            BlueprintName = "zoro"
-            ReferencedContainer = "container:zoro.xcodeproj">
+            BuildableName = "maestro.app"
+            BlueprintName = "maestro"
+            ReferencedContainer = "container:maestro.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -54,9 +54,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "4E22449F2FE4FDFB007CC9B9"
-            BuildableName = "zoro.app"
-            BlueprintName = "zoro"
-            ReferencedContainer = "container:zoro.xcodeproj">
+            BuildableName = "maestro.app"
+            BlueprintName = "maestro"
+            ReferencedContainer = "container:maestro.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

@@ -1,6 +1,6 @@
 //
 //  ConversationSidebarView.swift
-//  zoro
+//  maestro
 //
 //  Created by Udit Agarwal on 01/07/26.
 //
@@ -51,7 +51,7 @@ struct ConversationSidebarView: View {
       }
     }
     .listStyle(.sidebar)
-    .navigationTitle("Zoro")
+    .navigationTitle("Maestro")
     .safeAreaInset(edge: .bottom, spacing: 0) {
       settingsFooter
     }
@@ -71,7 +71,7 @@ struct ConversationSidebarView: View {
     VStack(spacing: 0) {
       Divider()
       Button {
-        NotificationCenter.default.post(name: .zoroSettings, object: nil)
+        NotificationCenter.default.post(name: .maestroSettings, object: nil)
       } label: {
         HStack(spacing: 8) {
           Image(systemName: "gearshape")

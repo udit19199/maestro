@@ -1,13 +1,13 @@
-# Zoro — Project Rules for AI Agents
+# Maestro — Project Rules for AI Agents
 
 ## Project Overview
 
-Zoro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar, Mail). Multi-account mail (Gmail OAuth + IMAP) is wired via `manage_mail` on the General agent (see Mail section).
+Maestro is a native **macOS SwiftUI application** that serves as an AI-powered personal assistant with tool-calling capabilities. It uses Apple's `FoundationModels` framework to interface with on-device Apple Intelligence, Apple Private Cloud Compute, OpenAI, and Codex (ChatGPT subscription). The assistant can read/write files, run terminal commands, manage calendar events and reminders, search the web, and interact with Apple Notes — scoped to an optional workspace folder (file/shell tools) or native integrations (Notes, Calendar, Mail). Multi-account mail (Gmail OAuth + IMAP) is wired via `manage_mail` on the General agent (see Mail section).
 
 - **Platform**: macOS 27.0+
 - **Language**: Swift 5 (uses modern Swift concurrency: `async/await`, `Task`, `CheckedContinuation`)
 - **UI Framework**: SwiftUI (AppKit is used only for `NSOpenPanel` and `NSColor` system colors)
-- **Bundle Identifier**: `uditagarwal.zoro`
+- **Bundle Identifier**: `uditagarwal.maestro`
 
 ---
 
@@ -20,15 +20,15 @@ Zoro is a native **macOS SwiftUI application** that serves as an AI-powered pers
 - **Four agents, one per thread:** General (default), Research, Planner, Teach. Pick at chat creation or General suggests handoff. No mid-chat switching in v1.
 - **Memory:** Hybrid editable profile file + conservative auto-extraction. Silent save with "memory updated" notice; review, edit, and delete in Settings Memory panel (undo list not implemented).
 - **Models:** Default → user-selected backend (Apple Intelligence default). Research/Planner/Teach → OpenAI when OpenAI key exists; Apple Intelligence until then. Backends: Apple Intelligence, PCC, OpenAI, Codex (ChatGPT subscription).
-- **iMessage:** Each inbound `zoro:` command → new conversation. Format: `zoro: [passcode ]research:|plan:|teach: <command>` (passcode optional). Thread continuation deferred Phase 2.
+- **iMessage:** Each inbound `maestro:` command → new conversation. Format: `maestro: [passcode ]research:|plan:|teach: <command>` (passcode optional). Thread continuation deferred Phase 2.
 - **See also:** `docs/PRODUCT.md`, `docs/DESIGN.md`
 
 ### High-Level Structure
 
 ```
-zoro/
+maestro/
 ├── App/
-│   ├── zoroApp.swift        # @main: WindowGroup (AppShell), MenuBarExtra, Settings scene
+│   ├── MaestroApp.swift        # @main: WindowGroup (AppShell), MenuBarExtra, Settings scene
 │   └── AppDelegate.swift    # Dock visibility, login item, briefing background refresh
 ├── Views/
 │   ├── AppShell.swift       # NavigationSplitView: sidebar + briefing home or chat
@@ -66,7 +66,7 @@ zoro/
 
 3. **WorkspaceManager runtime state**: `WorkspaceManager.shared` holds workspace URL, active processes, todos, research steps, clarify continuations, and execution context (local vs iMessage). Session invalidation delegates to `AgentRunner.shared.invalidateAllSessions()`.
 
-4. **ConversationStore persistence**: Threads persist to `~/Library/Application Support/Zoro/conversations.json`. Messages survive app restarts.
+4. **ConversationStore persistence**: Threads persist to `~/Library/Application Support/Maestro/conversations.json`. Messages survive app restarts.
 
 5. **Tool Protocol**: Each tool is a `struct` conforming to the `Tool` protocol from `FoundationModels`. Every tool follows the same pattern:
    - A `name` constant (the tool identifier used by the LLM)
@@ -107,7 +107,7 @@ System instructions for each agent live in `AgentPrompts.swift`. Mail is `manage
 
 ### Persistence
 
-All on-disk data lives under `~/Library/Application Support/Zoro/`:
+All on-disk data lives under `~/Library/Application Support/Maestro/`:
 
 | File | Owner | Purpose |
 |---|---|---|
@@ -172,9 +172,9 @@ Native Settings scene with two tabs:
 
 ## Adding a New Tool
 
-When adding a new tool to Zoro, follow these steps:
+When adding a new tool to Maestro, follow these steps:
 
-1. **Create a new file** named `<ToolName>Tool.swift` in `zoro/Tools/`.
+1. **Create a new file** named `<ToolName>Tool.swift` in `maestro/Tools/`.
 2. **Define a struct** conforming to `Tool` from `FoundationModels`:
    ```swift
    import Foundation
@@ -226,14 +226,14 @@ SPM dependency: `MailCore2` (IMAP). Gmail, Tavily, Apple Notes, and iMessage int
 - **Process Execution**: Terminal commands are staged for user confirmation, then run via `/bin/zsh -c` with the workspace as cwd. Background processes are tracked by `WorkspaceManager.activeProcesses`.
 - **Search Fallback**: `SearchFilesTool` tries ripgrep first (`/opt/homebrew/bin/rg`, `/usr/local/bin/rg`, `/usr/bin/rg`), then falls back to a native Swift file enumerator. Maintain this fallback pattern.
 - **AppleScript**: `AppleNotesTool` and `IMessageTool` use `/usr/bin/osascript`. All user input injected into AppleScript strings must be escaped via `SecurityPolicy.escapeForAppleScript()`.
-- **Unit tests**: The `zoroTests` target includes `Mail/*Tests`, `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
+- **Unit tests**: The `maestroTests` target includes `Mail/*Tests`, `Gmail/GmailParsingTests`, `Codex/CodexAuthTests`, and `Codex/CodexRequestSupportTests`. Run via ⌘U in Xcode on macOS.
 
 ---
 
 ## Build & Run
 
-- Open `zoro.xcodeproj` in Xcode.
-- Select the `zoro` scheme and a macOS destination.
+- Open `maestro.xcodeproj` in Xcode.
+- Select the `maestro` scheme and a macOS destination.
 - Build and run (`⌘R`).
 - On first launch, configure a **model backend** in Settings (⌘,). Attach a workspace folder in Settings → Workspace **only if** you need file or terminal tools; briefing and chat work without one.
 
@@ -241,16 +241,16 @@ SPM dependency: `MailCore2` (IMAP). Gmail, Tavily, Apple Notes, and iMessage int
 
 ## XcodeBuild MCP (local macOS agents)
 
-When Cursor runs on a **macOS host with Xcode 16+**, use the project-scoped **XcodeBuildMCP** server (`.cursor/mcp.json`) and `.xcodebuildmcp/config.yaml` session defaults (`zoro` scheme, `./zoro.xcodeproj`, macOS `Debug`).
+When Cursor runs on a **macOS host with Xcode 16+**, use the project-scoped **XcodeBuildMCP** server (`.cursor/mcp.json`) and `.xcodebuildmcp/config.yaml` session defaults (`maestro` scheme, `./maestro.xcodeproj`, macOS `Debug`).
 
 **Typical verification flow (via MCP tools):**
 1. `macos build` — compile the app.
-2. `macos test` — run `zoroTests` (mail ranking/cleanup/auditor, Gmail parsing, Codex auth/request tests).
+2. `macos test` — run `maestroTests` (mail ranking/cleanup/auditor, Gmail parsing, Codex auth/request tests).
 3. `macos build-and-run` — build and launch the app (requires GUI session for SwiftUI).
 
 Session defaults are preconfigured; override only if switching scheme or configuration. After editing `.xcodebuildmcp/config.yaml`, reload MCP servers in Cursor.
 
-**Prerequisites:** Full Xcode installed (not Command Line Tools only). If `xcode-select -p` shows `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer` (or `/Applications/Xcode.app/...` for stable Xcode). `.cursor/mcp.json` sets `DEVELOPER_DIR` to Xcode-beta so MCP builds work even before you fix `xcode-select`. Accept license if needed (`sudo xcodebuild -license accept`). Shared `zoro` scheme lives at `zoro.xcodeproj/xcshareddata/xcschemes/zoro.xcscheme`. First build needs network for SPM (`MailCore2`).
+**Prerequisites:** Full Xcode installed (not Command Line Tools only). If `xcode-select -p` shows `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer` (or `/Applications/Xcode.app/...` for stable Xcode). `.cursor/mcp.json` sets `DEVELOPER_DIR` to Xcode-beta so MCP builds work even before you fix `xcode-select`. Accept license if needed (`sudo xcodebuild -license accept`). Shared `maestro` scheme lives at `maestro.xcodeproj/xcshareddata/xcschemes/maestro.xcscheme`. First build needs network for SPM (`MailCore2`).
 
 **MCP tool names:** `build_macos`, `test_macos`, `build_run_macos`, `session_show_defaults` (call first each session).
 
@@ -258,9 +258,9 @@ Session defaults are preconfigured; override only if switching scheme or configu
 
 ## Cursor Cloud specific instructions
 
-- **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Zoro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `MailCore2` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
+- **This project cannot be built, run, lint-checked, or tested on the Cursor Cloud agent VM.** Cloud agents run on **Linux** (Ubuntu 24.04, x86_64). Maestro is a native **macOS Xcode application** (`com.apple.product-type.application`, `MACOSX_DEPLOYMENT_TARGET = 27.0`) that imports Apple-only frameworks: `FoundationModels`, `SwiftUI`, `EventKit`, `Security` (Keychain), plus the `MailCore2` SPM package. These frameworks ship only inside the macOS/Xcode SDK and do **not** exist in the Swift toolchain for Linux.
 - A Swift-for-Linux toolchain (`swift` 6.x via `swiftly`) *can* be installed, but it cannot compile this app: `swiftc -typecheck` fails immediately with `no such module 'FoundationModels'` / `no such module 'SwiftUI'`. Do not waste time trying to make it build on Linux.
-- There is a **`zoroTests` unit test target** (XCTest), but it only runs on macOS via Xcode. There is **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
+- There is a **`maestroTests` unit test target** (XCTest), but it only runs on macOS via Xcode. There is **no `Package.swift`**, no Makefile, and no `npm`/`pip`/CLI dev server. The only build/run path is Xcode on macOS (see "Build & Run" above).
 - To actually build/run/test, a developer must use a **macOS host with Xcode 26.x+** (Apple Intelligence–capable for the on-device backend; otherwise configure OpenAI or Codex in Settings (⌘,), stored in the macOS Keychain). Xcode auto-resolves the `MailCore2` SPM dependency on first build (network required once).
 - Practical implication for cloud agents: scope work here to **code reading/editing and static reasoning**. Any verification that requires compiling or running the app must be done by the user on macOS.
 
@@ -269,15 +269,15 @@ Session defaults are preconfigured; override only if switching scheme or configu
 ## iMessage Integration & Security Policy
 
 ### Overview
-Zoro supports a native, zero-dependency iMessage listener that allows remote command execution and notification dispatch using macOS native APIs:
+Maestro supports a native, zero-dependency iMessage listener that allows remote command execution and notification dispatch using macOS native APIs:
 - **Outgoing Messages:** `Integrations/IMessage/IMessageTool.swift` drives the native `Messages.app` using AppleScript via `/usr/bin/osascript`.
 - **Incoming Messages:** `Integrations/IMessage/IMessageListener.swift` opens `~/Library/Messages/chat.db` in read-only mode using macOS's built-in `SQLite3` bindings. Write events are monitored efficiently in real-time using a GCD `DispatchSource` file watcher.
 
 ### Security Controls
-1. **Full Disk Access:** Accessing `chat.db` requires Full Disk Access enabled in macOS System Settings for the parent target (Xcode/Zoro). If not granted, the app surfaces a clear diagnostic warning.
+1. **Full Disk Access:** Accessing `chat.db` requires Full Disk Access enabled in macOS System Settings for the parent target (Xcode/Maestro). If not granted, the app surfaces a clear diagnostic warning.
 2. **Strict Sender Whitelist:** Incoming messages are compared against a comma-separated list of whitelisted phone numbers/emails stored in `UserDefaults`. Unlisted senders are silently ignored. Contacts are normalized before comparison.
-3. **Optional Passcode:** Remote commands may require a passcode stored in the Keychain. If configured, the passcode must appear immediately after `zoro:` and before agent prefixes. The listener can be enabled with whitelist only (passcode labeled optional in Settings).
-4. **Command Prefix:** Messages must start with `zoro:` (case-insensitive). Agent routing prefixes (`research:`, `plan:`, `teach:`) come after the optional passcode.
+3. **Optional Passcode:** Remote commands may require a passcode stored in the Keychain. If configured, the passcode must appear immediately after `maestro:` and before agent prefixes. The listener can be enabled with whitelist only (passcode labeled optional in Settings).
+4. **Command Prefix:** Messages must start with `maestro:` (case-insensitive). Agent routing prefixes (`research:`, `plan:`, `teach:`) come after the optional passcode.
 5. **Incoming-Only Messages:** The listener only processes incoming messages (`is_from_me = 0`) to prevent self-triggered command loops.
 6. **Global Rate Limiting:** Remote execution is capped at 5 commands per minute **app-wide** (not per sender).
 7. **Runtime tool restrictions:** Tools are built by `ToolFactory` with a baked `AgentExecutionContext`. Remote allowlist is read-oriented (files, mail read, calendar list, notes read, search, todos). Shell, memory writes, and free-fire model send are denied. Listener replies use `IMessageDirectSender`. Local email/iMessage/shell/calendar mutations stage for `PendingActionsBar`. `ClarifyTool` refuses to suspend on iMessage. Notes/calendar action-level gates apply via `SecurityPolicy`.
@@ -341,5 +341,5 @@ Setup guides: `reference/mail-setup.md`, `reference/gmail-setup.md`
 `http://127.0.0.1:8765/` — local callback server in `OAuthCallbackServer`
 
 ### Test target
-- `zoroTests` — run with ⌘U in Xcode; includes Mail/*, Gmail parsing, Codex, and `Security/SecurityPolicyTests`
+- `maestroTests` — run with ⌘U in Xcode; includes Mail/*, Gmail parsing, Codex, and `Security/SecurityPolicyTests`
 

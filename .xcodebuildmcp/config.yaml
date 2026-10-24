@@ -5,7 +5,7 @@ enabledWorkflows:
   - coverage
   - utilities
 sessionDefaults:
-  projectPath: "./zoro.xcodeproj"
-  scheme: "zoro"
+  projectPath: "./maestro.xcodeproj"
+  scheme: "maestro"
   platform: "macOS"
   configuration: "Debug"

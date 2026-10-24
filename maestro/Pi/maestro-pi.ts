@@ -7,8 +7,8 @@ export default function (pi: ExtensionAPI) {
     if (!directory) throw new Error("Missing pi configuration directory");
     return ModelRuntime.create({ authPath: join(directory, "auth.json"), modelsPath: join(directory, "models.json") });
   };
-  pi.registerCommand("zoro-providers", {
-    description: "List pi providers for Zoro",
+  pi.registerCommand("maestro-providers", {
+    description: "List pi providers for Maestro",
     async handler(_, ctx) {
       const models = await runtime();
       ctx.ui.notify(JSON.stringify({ providers: models.getProviders().map(provider => ({
@@ -20,8 +20,8 @@ export default function (pi: ExtensionAPI) {
       })) }), "info");
     },
   });
-  pi.registerCommand("zoro-connect", {
-    description: "Sign in to a pi provider from Zoro",
+  pi.registerCommand("maestro-connect", {
+    description: "Sign in to a pi provider from Maestro",
     async handler(args, ctx) {
       const [provider, method] = args.trim().split(/\s+/);
       if (!provider || (method !== "api_key" && method !== "oauth")) throw new Error("Choose a provider and login method");
@@ -35,7 +35,7 @@ export default function (pi: ExtensionAPI) {
               if (!value) throw new Error("Sign-in cancelled");
               return value;
             }
-            const value = await ctx.ui.input(prompt.type === "secret" ? "zoro.secret" : prompt.message, prompt.message);
+            const value = await ctx.ui.input(prompt.type === "secret" ? "maestro.secret" : prompt.message, prompt.message);
             if (!value?.trim()) throw new Error("Sign-in cancelled");
             return value.trim();
           },

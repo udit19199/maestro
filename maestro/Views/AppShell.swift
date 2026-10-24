@@ -1,6 +1,6 @@
 //
 //  AppShell.swift
-//  zoro
+//  maestro
 //
 //  Created by Udit Agarwal on 01/07/26.
 //
@@ -29,11 +29,11 @@ struct AppShell: View {
         .onAppear {
             conversationStore.load()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .zoroSettings)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .maestroSettings)) { _ in
             showSettings = true
         }
         .onChange(of: conversationStore.selectedConversationID) { _, _ in showSettings = false }
-        .onReceive(NotificationCenter.default.publisher(for: .zoroNewChat)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .maestroNewChat)) { _ in
             showSettings = false
             showNewChatSheet = true
         }

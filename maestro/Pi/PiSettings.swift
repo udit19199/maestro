@@ -72,7 +72,7 @@ final class PiSettings: ObservableObject {
     else { return }
     loginFailed = false
     startRequest(
-      .prompt(id: "login", message: "/zoro-connect " + provider + " " + method.rawValue),
+      .prompt(id: "login", message: "/maestro-connect " + provider + " " + method.rawValue),
       status: "Follow the provider sign-in steps.")
   }
 
@@ -93,7 +93,7 @@ final class PiSettings: ObservableObject {
   }
   func refreshProviders() {
     startRequest(
-      .prompt(id: "providers", message: "/zoro-providers"),
+      .prompt(id: "providers", message: "/maestro-providers"),
       status: "Loading providers...")
   }
 
@@ -134,10 +134,10 @@ final class PiSettings: ObservableObject {
         if event.method == "select" {
           kind = .select(event.options ?? [])
         } else {
-          kind = title == "zoro.secret" ? .secret : .text
+          kind = title == "maestro.secret" ? .secret : .text
         }
         inputRequest = InputRequest(
-          id: id, title: title == "zoro.secret" ? "API key" : title, kind: kind)
+          id: id, title: title == "maestro.secret" ? "API key" : title, kind: kind)
       } else if event.method == "notify", let message = event.message?.text {
         let data = Data(message.utf8)
         if let list = try? JSONDecoder().decode(ProviderList.self, from: data) {

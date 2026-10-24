@@ -6,12 +6,12 @@ final class BotLibrary: ObservableObject {
   static let shared = BotLibrary()
   nonisolated static let directory = FileManager.default.urls(
     for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    .appendingPathComponent("Zoro/bots", isDirectory: true)
+    .appendingPathComponent("Maestro/bots", isDirectory: true)
 
   // Kept independent of PiRPC: only the legacy migration reads pi's folder.
   private static var legacyCatalogURL: URL {
     FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("Zoro/pi/agents.json")
+      .appendingPathComponent("Maestro/pi/agents.json")
   }
 
   private static var defaultBot: BotDefinition {

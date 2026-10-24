@@ -4,8 +4,8 @@ import Foundation
 struct BotChatsCheck {
   @MainActor static func main() async throws {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("Zoro")
-    precondition(base.path.hasPrefix("/tmp/zoro-bot-chats."), "Run through check-bot-chats.sh")
+      .appendingPathComponent("Maestro")
+    precondition(base.path.hasPrefix("/tmp/maestro-bot-chats."), "Run through check-bot-chats.sh")
     try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
     let storage = base.appendingPathComponent("conversations.json")
     let first = BotDefinition(name: "First", systemPrompt: "First instructions")
@@ -200,7 +200,7 @@ struct BotChatsCheck {
     precondition(
       receivedModels, "The installed pi must return a typed model catalog within 10 seconds")
     let isolated = store.createConversation(bot: first)
-    await PiSessions.shared.sendMessage(conversationID: isolated.id, text: "/zoro-providers")
+    await PiSessions.shared.sendMessage(conversationID: isolated.id, text: "/maestro-providers")
     PiSessions.shared.stopConversation(isolated.id)
     precondition(!PiSessions.shared.isRunning(conversationID: isolated.id))
     let terminal = store.conversation(id: isolated.id)!.messages.last!

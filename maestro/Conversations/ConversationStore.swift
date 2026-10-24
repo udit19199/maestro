@@ -1,6 +1,6 @@
 //
 //  ConversationStore.swift
-//  zoro
+//  maestro
 //
 //  Created by Udit Agarwal on 01/07/26.
 //
@@ -23,8 +23,8 @@ final class ConversationStore: ObservableObject {
       for: .applicationSupportDirectory, in: .userDomainMask
     ).first
     let base =
-      appSupport?.appendingPathComponent("Zoro", isDirectory: true)
-      ?? FileManager.default.temporaryDirectory.appendingPathComponent("Zoro", isDirectory: true)
+      appSupport?.appendingPathComponent("Maestro", isDirectory: true)
+      ?? FileManager.default.temporaryDirectory.appendingPathComponent("Maestro", isDirectory: true)
     try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
     return base
   }
