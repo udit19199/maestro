@@ -21,10 +21,15 @@ final class PiSessions: ObservableObject {
     var text = ""
     var failure: String?
     var phase: RunPhase = .streaming
+    // Bot-to-bot messages that led to this run; caps hand-off chains.
+    var hops = 0
   }
+  static let maxHops = 4
 
   @Published private(set) var runs: [UUID: Run] = [:]
   private var processes: [UUID: PiRPC] = [:]
+  // Hand-offs waiting for a busy bot, delivered in order when its run ends.
+  private var inbox: [UUID: [(text: String, hops: Int)]] = [:]
 
   func approval(for id: UUID) -> Approval? {
     guard case .awaitingApproval(let approval) = runs[id]?.phase else { return nil }
@@ -43,7 +48,7 @@ final class PiSessions: ObservableObject {
       runs[id]?.phase = .streaming
     } catch { fail(id, error.localizedDescription) }
   }
-  func sendMessage(conversationID: UUID, text prompt: String) async {
+  func sendMessage(conversationID: UUID, text prompt: String, hops: Int = 0) async {
     let store = ConversationStore.shared
     let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !prompt.isEmpty, !isRunning(conversationID: conversationID),
@@ -54,7 +59,7 @@ final class PiSessions: ObservableObject {
     store.appendMessage(to: id, message: StoredMessage(role: .user, content: prompt))
     let response = StoredMessage(
       role: .assistant, content: "", botID: bot.id, status: .streaming)
-    runs[id] = Run(messageID: response.id, botID: bot.id)
+    runs[id] = Run(messageID: response.id, botID: bot.id, hops: hops)
     store.appendMessage(to: id, message: response)
     do {
       let worker: PiRPC
@@ -93,6 +98,42 @@ final class PiSessions: ObservableObject {
       conversationID: id, messageID: run.messageID, content: run.text,
       status: status, failure: failure ?? run.failure)
     ConversationStore.shared.persistNow()
+    if var queued = inbox[id], !queued.isEmpty {
+      let next = queued.removeFirst()
+      inbox[id] = queued.isEmpty ? nil : queued
+      Task { await sendMessage(conversationID: id, text: next.text, hops: next.hops) }
+    }
+  }
+  private struct Handoff: Decodable {
+    let handoff: Body
+    struct Body: Decodable {
+      let to: String
+      let message: String
+    }
+  }
+  /// Delivers a message_bot call into the target bot's newest chat, like a DM between bots.
+  private func deliver(_ handoff: Handoff.Body, from id: UUID) {
+    let store = ConversationStore.shared
+    guard let run = runs[id], let sender = BotLibrary.shared.bot(id: run.botID) else { return }
+    guard run.hops < Self.maxHops else {
+      runs[id]?.failure = "Hand-off limit (\(Self.maxHops)) reached; \(handoff.to) was not messaged."
+      return
+    }
+    guard let target = BotLibrary.shared.bots.first(where: { $0.name == handoff.to }) else { return }
+    let chat: Conversation
+    if let existing = store.conversations.first(where: { $0.botID == target.id }) {
+      chat = existing
+    } else {
+      let shown = store.selectedConversationID
+      chat = store.createConversation(bot: target)
+      store.selectConversation(shown)
+    }
+    let text = "Message from \(sender.name): \(handoff.message)"
+    if isRunning(conversationID: chat.id) {
+      inbox[chat.id, default: []].append((text, run.hops + 1))
+    } else {
+      Task { await sendMessage(conversationID: chat.id, text: text, hops: run.hops + 1) }
+    }
   }
   private func update(_ id: UUID) {
     guard let run = runs[id] else { return }
@@ -139,6 +180,10 @@ final class PiSessions: ObservableObject {
           Approval(
             requestID: requestID, title: event.title ?? "Approve change",
             message: event.message?.text ?? ""))
+      } else if event.method == "notify", let text = event.message?.text,
+        let handoff = try? JSONDecoder().decode(Handoff.self, from: Data(text.utf8))
+      {
+        deliver(handoff.handoff, from: id)
       } else if ["input", "editor", "select"].contains(event.method ?? "") {
         do { try processes[id]?.send(.cancelInput(id: requestID)) } catch {
           fail(id, error.localizedDescription)

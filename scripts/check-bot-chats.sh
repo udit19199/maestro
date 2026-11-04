@@ -11,4 +11,8 @@ cp maestro/Pi/maestro-pi.ts "$check_dir/maestro-pi.ts"
 mkdir -p "$check_dir/Library/Application Support/Maestro/pi"
 ln -s "$HOME/Library/Application Support/Maestro/pi/runtime" \
   "$check_dir/Library/Application Support/Maestro/pi/runtime"
+# models.json holds no secret: pi reads Relay's key at request time.
+mkdir -p "$check_dir/Library/Application Support/Maestro/pi/agent"
+cp "$HOME/Library/Application Support/Maestro/pi/agent/models.json" \
+  "$check_dir/Library/Application Support/Maestro/pi/agent/"
 CFFIXED_USER_HOME="$check_dir" "$check_dir/check"

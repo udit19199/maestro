@@ -208,6 +208,30 @@ struct BotChatsCheck {
     precondition(terminal.botID == first.id)
     store.load()
     precondition(store.conversation(id: isolated.id)!.messages.last!.status == terminal.status)
+
+    // Live hand-off through Relay: Planner messages Writer, Writer wakes in its own chat.
+    let fast = ExecutionChoice.pi(provider: "relay", model: "claude-haiku-5-5")
+    let plannerID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Planner", systemPrompt: "You plan launches.", execution: fast))
+    let writerID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Writer", systemPrompt: "You write one-line posts. Never message other bots.", execution: fast))
+    let planner = store.createConversation(bot: BotLibrary.shared.bot(id: plannerID)!)
+    await PiSessions.shared.sendMessage(
+      conversationID: planner.id,
+      text: "Use message_bot once to ask Writer for a one-line launch post for Maestro. Then reply: asked.")
+    var writerChat: Conversation?
+    for _ in 0..<1200 {
+      writerChat = store.conversations.first { $0.botID == writerID }
+      if let chat = writerChat, chat.messages.last?.status == .completed,
+        PiSessions.shared.runs.isEmpty
+      { break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+    let delivered = writerChat?.messages ?? []
+    precondition(delivered.first?.content.hasPrefix("Message from Planner:") == true, "Writer got no hand-off")
+    precondition(delivered.last?.status == .completed && delivered.last?.content.isEmpty == false)
+    precondition(store.selectedConversationID == planner.id, "Hand-off must not switch the open chat")
+    print("PASS: Planner handed work to Writer through message_bot; Writer replied in its own chat: \(delivered.last!.content)")
     print(
       "PASS: reply outcomes survive reload; restart marks partial replies interrupted; legacy defaults, pi payloads, and stopping a real process preserve message identity."
     )

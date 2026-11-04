@@ -65,11 +65,17 @@ final class PiRPC {
       case nil:
         modelFlag =
           UserDefaults.standard.string(forKey: "pi_model")
-          ?? "cliauthproxy/gpt-6.1-sol"
+          ?? "relay/claude-sonnet-5-5"
       }
+      // maestro-pi.ts only lets message_bot reach these names.
+      let others = BotLibrary.shared.bots.filter { $0.id != bot.id }.map(\.name)
+      process.environment?["MAESTRO_BOTS"] = others.joined(separator: "\n")
+      let roster =
+        others.isEmpty
+        ? "" : "\n\nOther bots you can hand work to with message_bot: " + others.joined(separator: ", ")
       args += [
         "--session-dir", sessions.path, "--session-id", conversationID.uuidString,
-        "--append-system-prompt", bot.effectiveSystemPrompt,
+        "--append-system-prompt", bot.effectiveSystemPrompt + roster,
         "--model", modelFlag,
       ]
       for source in bot.skills {

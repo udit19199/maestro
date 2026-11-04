@@ -1,7 +1,31 @@
 import { ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
+import { Type } from "typebox";
 
 export default function (pi: ExtensionAPI) {
+  // Maestro delivers the message: it reads the notify below and wakes the other bot.
+  pi.registerTool({
+    name: "message_bot",
+    label: "Message bot",
+    description:
+      "Send a message to another Maestro bot by name. It replies later in a new message to you; do not wait for it.",
+    parameters: Type.Object({
+      to: Type.String({ description: "Exact name of the bot" }),
+      message: Type.String({ description: "What you need from that bot, with all needed context" }),
+    }),
+    async execute(_id, params) {
+      return { content: [{ type: "text", text: `Sent to ${params.to}.` }], details: undefined };
+    },
+  });
+  pi.on("tool_call", async (event, ctx) => {
+    if (event.toolName !== "message_bot") return;
+    const bots = (process.env.MAESTRO_BOTS ?? "").split("\n").filter(Boolean);
+    const input = event.input as { to: string };
+    if (!bots.includes(input.to)) {
+      return { block: true, reason: `No bot named "${input.to}". Bots: ${bots.join(", ") || "none"}.` };
+    }
+    ctx.ui.notify(JSON.stringify({ handoff: event.input }), "info");
+  });
   const runtime = async () => {
     const directory = process.env.PI_CODING_AGENT_DIR;
     if (!directory) throw new Error("Missing pi configuration directory");
