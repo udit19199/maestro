@@ -34,7 +34,7 @@ The local Relay provider uses pi’s `models.json` and reads its client key from
 
 ## Current scope
 
-Existing bot definitions, pi conversations, provider authentication, model selection from pi’s catalog, and native MCP setup. Bot creation and editing are not included. Memory, briefing, mail, calendar, iMessage startup, and automatic login-item registration are removed from the active product flow. The unused native integrations and their tools have been removed.
+Existing bot definitions, pi conversations, provider authentication, model selection from pi’s catalog, native MCP setup, bot hand-offs, group chats, and Gmail and Google Calendar tools. Bot creation and editing are not included. Memory, briefing, iMessage startup, and automatic login-item registration are removed from the active product flow.
 
 ## Bot hand-offs
 
@@ -59,3 +59,28 @@ Run `bash scripts/check-bot-chats.sh` to check bot selection, persistence, and o
 - `App`: window and application lifecycle.
 
 `maestro-pi.ts` is a pi extension copied into the app bundle by Xcode. Pi loads it to expose its provider catalog and login prompts to the native UI, and to request approval for MCP tool calls. Pi still owns provider authentication and MCP execution.
+
+## Group chats
+
+In New Chat, pick two to six bots to start a group chat. The first bot you pick leads. Pick one bot for a normal chat.
+
+- Write normally and the lead bot answers. Type `@Name` to have that bot answer instead. Mention several bots and they answer one after another, in the order you mentioned them. Only one bot answers at a time.
+- Each bot keeps its own pi history for the group. Before a bot answers, Maestro gives it the group messages it has not seen since its last reply.
+- When a bot uses `message_bot` to reach another member, the request appears in the group as a line from the sending bot, and the other bot answers there. Hand-offs to bots outside the group still go to that bot's own chat. The 4-hop limit applies to both.
+- Older one-bot chats load and keep their history unchanged.
+
+## Gmail and Calendar
+
+Bots read, send, and archive mail in one Gmail account and manage its primary Google Calendar. `maestro-pi.ts` calls the Gmail and Calendar APIs directly. `gmail_search`, `gmail_read`, and `calendar_list` run without asking. `gmail_send`, `gmail_draft`, `gmail_label` (archive, mark read, labels), `calendar_create`, `calendar_update`, and `calendar_delete` wait for your approval in the chat, which shows what will happen. Deny stops the call.
+
+One-time setup in [Google Cloud Console](https://console.cloud.google.com/):
+
+1. Create a project.
+2. Enable the Gmail API and the Google Calendar API.
+3. Set up the OAuth consent screen as External, in Testing mode, and add your Gmail address as a test user.
+4. Create an OAuth client ID of type Desktop app and download its JSON.
+5. Save that file as `~/Library/Application Support/Maestro/pi/agent/google-client.json`.
+
+Then open Settings > Google and select Connect. Your browser opens Google sign-in. Maestro asks for `gmail.modify` (read, send, labels) and `calendar.events`, and saves the refresh token in `pi/agent/google-token.json` with owner-only permissions. Google expires refresh tokens for apps in Testing mode after 7 days; select Connect again when a bot reports that sign-in failed.
+
+Run `bash scripts/check-google.sh` to check the tools without a Google account: an unconnected search fails with a clear message, a denied `gmail_send` is blocked, and `message_bot` still works.

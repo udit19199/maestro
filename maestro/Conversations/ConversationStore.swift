@@ -123,8 +123,8 @@ final class ConversationStore: ObservableObject {
   }
 
   @discardableResult
-  func createConversation(bot: BotDefinition) -> Conversation {
-    let conversation = Conversation(title: "New Chat", botID: bot.id)
+  func createConversation(bot: BotDefinition, extraBotIDs: [UUID] = []) -> Conversation {
+    let conversation = Conversation(title: "New Chat", botID: bot.id, extraBotIDs: extraBotIDs)
     conversations.insert(conversation, at: 0)
     selectedConversationID = conversation.id
     scheduleSave()

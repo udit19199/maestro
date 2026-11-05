@@ -91,6 +91,22 @@ final class PiSettings: ObservableObject {
     mcpProcess = nil
     status = "Connection setup cancelled."
   }
+  func connectGoogle() {
+    startRequest(
+      .prompt(id: "google", message: "/maestro-google-connect"), status: "Starting Google sign-in...")
+  }
+  func refreshGoogle() {
+    let file = { PiRPC.configDirectory.appendingPathComponent($0).path }
+    if FileManager.default.fileExists(atPath: file("google-token.json")) {
+      status = "Google is connected. Press Connect to sign in again."
+    } else if FileManager.default.fileExists(atPath: file("google-client.json")) {
+      status = "Google is not connected. Press Connect."
+    } else {
+      status =
+        "Google needs your OAuth client file. Save the Desktop app client JSON from Google Cloud as "
+        + file("google-client.json") + ", then press Connect."
+    }
+  }
   func refreshProviders() {
     startRequest(
       .prompt(id: "providers", message: "/maestro-providers"),
@@ -164,7 +180,9 @@ final class PiSettings: ObservableObject {
       failed(event.error ?? "pi rejected the setup request.")
       return
     }
-    if event.id == "providers" {
+    if event.id == "google" {
+      finish()
+    } else if event.id == "providers" {
       finish()
       refreshModels()
     } else if event.id == "login" {

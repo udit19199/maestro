@@ -6,6 +6,7 @@ struct SettingsView: View {
   private enum Page: String {
     case providers = "Providers"
     case mcp = "MCP servers"
+    case google = "Google"
   }
   @State private var page: Page?
   @State private var input = ""
@@ -25,6 +26,7 @@ struct SettingsView: View {
         List {
           Button("Providers") { page = .providers }
           Button("MCP servers") { page = .mcp }
+          Button("Google") { page = .google }
         }
       }
       if let page {
@@ -81,6 +83,14 @@ struct SettingsView: View {
               }.onChange(of: model) { _, _ in PiSessions.shared.stopAll() }
               Button("Refresh providers") { pi.refreshProviders() }.disabled(pi.busy)
             }
+          } else if page == .google {
+            Section("Google account") {
+              HStack {
+                Text("Gmail and Calendar")
+                Spacer()
+                Button("Connect") { pi.connectGoogle() }
+              }
+            }.disabled(pi.busy)
           } else {
             Section("Supported MCP servers") {
               ForEach(PiSettings.supportedMCPServers) { server in
@@ -106,6 +116,7 @@ struct SettingsView: View {
     .onChange(of: page) { _, page in
       pi.status = ""
       if page == .providers { pi.refreshProviders() }
+      if page == .google { pi.refreshGoogle() }
     }
     .onChange(of: pi.inputRequest?.id) { _, _ in input = "" }
   }
