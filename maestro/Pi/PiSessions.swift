@@ -251,6 +251,14 @@ final class PiSessions: ObservableObject {
         let handoff = try? JSONDecoder().decode(Handoff.self, from: Data(text.utf8))
       {
         deliver(handoff.handoff, from: id)
+      } else if event.method == "input", event.title == "maestro.calendar" {
+        let worker = worker(id)
+        Task {
+          let reply = await MacCalendar.handle(event.placeholder ?? "")
+          do { try worker?.send(.input(id: requestID, value: reply)) } catch {
+            fail(id, error.localizedDescription)
+          }
+        }
       } else if ["input", "editor", "select"].contains(event.method ?? "") {
         do { try worker(id)?.send(.cancelInput(id: requestID)) } catch {
           fail(id, error.localizedDescription)
