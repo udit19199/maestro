@@ -1,9 +1,9 @@
 # Product
 
-Maestro is a native macOS app for conversations with bots running through pi RPC. The first bot is Projects Manager. Projects and tasks belong in Notion. Specialist delegation is not implemented yet.
+Maestro is a native macOS app where named bots do Udit's work and hand it to each other, replacing Grok Bot. Bots run through pi RPC on Relay.
 
-Bots are configured separately from chats. Users can switch the selected bot between messages without losing conversation history.
+Bots handle all of Udit's email (Gmail) and calendar (the Mac's calendars), so he does not read mail himself. A bot asks before it sends, drafts, labels, or changes an event.
 
-The main window contains the conversation sidebar and the selected conversation. Settings stays in the same window. Providers lists pi-supported providers; MCP servers lists integrations supported by Maestro, starting with Notion. Users connect through the UI, without terminal commands.
+Chats hold one bot or a group of 2-6 bots; a bot passes work to another with `message_bot`. Projects and tasks belong in Notion, connected under Settings > MCP servers. Settings stays in the main window.
 
-Bot creation, Memory, mail, calendar, and remote messaging are outside the current scope.
+Memory and remote messaging (iMessage) are outside the current scope.
