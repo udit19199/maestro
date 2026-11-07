@@ -47,6 +47,10 @@ struct BotChatsCheck {
     precondition(
       firstArgs[firstArgs.firstIndex(of: "--session-dir")! + 1]
         == secondArgs[secondArgs.firstIndex(of: "--session-dir")! + 1])
+    // One-bot chats keep the original session path, so old history still loads.
+    precondition(
+      firstArgs[firstArgs.firstIndex(of: "--session-dir")! + 1].hasSuffix(
+        "sessions/\(legacyID.uuidString)"))
 
     // Attached skills reach pi as --skill paths plus a use-skills instruction.
     let skillDir = base.appendingPathComponent("skills/research", isDirectory: true)
@@ -208,6 +212,52 @@ struct BotChatsCheck {
     precondition(terminal.botID == first.id)
     store.load()
     precondition(store.conversation(id: isolated.id)!.messages.last!.status == terminal.status)
+
+    // Live hand-off through Relay: Planner messages Writer, Writer wakes in its own chat.
+    let fast = ExecutionChoice.pi(provider: "relay", model: "claude-haiku-5-5")
+    let plannerID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Planner", systemPrompt: "You plan launches.", execution: fast))
+    let writerID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Writer", systemPrompt: "You write one-line posts. Never message other bots.", execution: fast))
+    let planner = store.createConversation(bot: BotLibrary.shared.bot(id: plannerID)!)
+    await PiSessions.shared.sendMessage(
+      conversationID: planner.id,
+      text: "Use message_bot once to ask Writer for a one-line launch post for Maestro. Then reply: asked.")
+    var writerChat: Conversation?
+    for _ in 0..<1200 {
+      writerChat = store.conversations.first { $0.botID == writerID }
+      if let chat = writerChat, chat.messages.last?.status == .completed,
+        PiSessions.shared.runs.isEmpty
+      { break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+    let delivered = writerChat?.messages ?? []
+    precondition(delivered.first?.content.hasPrefix("Message from Planner:") == true, "Writer got no hand-off")
+    precondition(delivered.last?.status == .completed && delivered.last?.content.isEmpty == false)
+    precondition(store.selectedConversationID == planner.id, "Hand-off must not switch the open chat")
+    print("PASS: Planner handed work to Writer through message_bot; Writer replied in its own chat: \(delivered.last!.content)")
+
+    // Live group: the user @mentions the second member, so it answers instead of the lead.
+    let hostID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Host", systemPrompt: "You host. Never message other bots.", execution: fast))
+    let criticID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Critic", systemPrompt: "You critique in one line. Never message other bots.", execution: fast))
+    let group = store.createConversation(
+      bot: BotLibrary.shared.bot(id: hostID)!, extraBotIDs: [criticID])
+    await PiSessions.shared.sendMessage(
+      conversationID: group.id, text: "@Critic rate the name Maestro in five words.")
+    for _ in 0..<600 {
+      if !PiSessions.shared.isRunning(conversationID: group.id) { break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+    let groupMessages = store.conversation(id: group.id)!.messages
+    let answers = groupMessages.filter { $0.role == .assistant }
+    precondition(answers.count == 1 && answers[0].botID == criticID, "Critic must answer alone")
+    precondition(answers[0].status == .completed && !answers[0].content.isEmpty)
+    let criticSession = PiRPC.configDirectory.appendingPathComponent(
+      "sessions/\(group.id.uuidString)-\(criticID.uuidString)")
+    precondition(FileManager.default.fileExists(atPath: criticSession.path), "Critic needs its own session")
+    print("PASS: in a Host+Critic group, @Critic made Critic answer in the group with its own session: \(answers[0].content)")
     print(
       "PASS: reply outcomes survive reload; restart marks partial replies interrupted; legacy defaults, pi payloads, and stopping a real process preserve message identity."
     )

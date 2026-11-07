@@ -13,7 +13,8 @@ struct MessageBubble: View {
 
   var body: some View {
     HStack {
-      if message.role == .user {
+      // A user-role line with a botID is a hand-off; show it as coming from that bot.
+      if message.role == .user && message.botID == nil {
         Spacer()
         Text(message.content)
           .font(.body)

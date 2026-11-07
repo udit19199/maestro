@@ -12,7 +12,8 @@ struct NewChatSheet: View {
   @ObservedObject private var conversationStore = ConversationStore.shared
 
   @ObservedObject private var bots = BotLibrary.shared
-  @State private var selectedBot: UUID?
+  // In pick order; the first bot leads a group.
+  @State private var picked: [UUID] = []
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -20,14 +21,22 @@ struct NewChatSheet: View {
         .font(.title2)
         .fontWeight(.semibold)
 
-      Text("Choose a bot to start with. You can switch bots later.")
+      Text("Pick one bot, or two to six for a group chat. The first bot you pick leads the group.")
         .font(.subheadline)
         .foregroundStyle(.secondary)
 
       if let error = bots.loadError { Text(error).foregroundStyle(.red) }
 
-      Picker("Bot", selection: $selectedBot) {
-        ForEach(bots.bots) { Text($0.name).tag(Optional($0.id)) }
+      ForEach(bots.bots) { bot in
+        Toggle(
+          bot.name,
+          isOn: Binding(
+            get: { picked.contains(bot.id) },
+            set: { on in
+              if on { picked.append(bot.id) } else { picked.removeAll { $0 == bot.id } }
+            })
+        )
+        .disabled(picked.count >= 6 && !picked.contains(bot.id))
       }
 
       HStack {
@@ -38,17 +47,17 @@ struct NewChatSheet: View {
         .keyboardShortcut(.cancelAction)
 
         Button("Create") {
-          if let bot = bots.bots.first(where: { $0.id == selectedBot }) {
-            conversationStore.createConversation(bot: bot)
+          if let bot = picked.first.flatMap(bots.bot(id:)) {
+            conversationStore.createConversation(bot: bot, extraBotIDs: Array(picked.dropFirst()))
           }
           dismiss()
         }
-        .disabled(selectedBot == nil)
+        .disabled(picked.isEmpty)
         .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
       }
     }
-    .onAppear { selectedBot = bots.bots.first?.id }
+    .onAppear { picked = bots.bots.first.map { [$0.id] } ?? [] }
     .padding(24)
     .frame(width: 480)
   }

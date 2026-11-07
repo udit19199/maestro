@@ -19,7 +19,7 @@ final class BotLibrary: ObservableObject {
       id: UUID(uuidString: "C8C21149-726E-4DCB-B219-6885A3D86EB1")!,
       name: "Projects Manager",
       systemPrompt:
-        "Help the user plan and coordinate projects. Use Notion when connected. Explain blockers honestly. Specialist delegation is not connected in this first runtime step."
+        "Help the user plan and coordinate projects. Use Notion when connected. Explain blockers honestly. Hand specialist work to other bots with message_bot."
     )
   }
 

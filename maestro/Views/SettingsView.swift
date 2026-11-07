@@ -6,9 +6,12 @@ struct SettingsView: View {
   private enum Page: String {
     case providers = "Providers"
     case mcp = "MCP servers"
+    case mail = "Mail and Calendar"
   }
   @State private var page: Page?
   @State private var input = ""
+  @State private var address = ""
+  @State private var password = ""
 
   var body: some View {
     VStack {
@@ -25,6 +28,7 @@ struct SettingsView: View {
         List {
           Button("Providers") { page = .providers }
           Button("MCP servers") { page = .mcp }
+          Button("Mail and Calendar") { page = .mail }
         }
       }
       if let page {
@@ -81,6 +85,22 @@ struct SettingsView: View {
               }.onChange(of: model) { _, _ in PiSessions.shared.stopAll() }
               Button("Refresh providers") { pi.refreshProviders() }.disabled(pi.busy)
             }
+          } else if page == .mail {
+            Section("Gmail") {
+              TextField("Gmail address", text: $address)
+              SecureField("App password", text: $password)
+              Button("Save") {
+                pi.saveMail(address: address, password: password)
+                password = ""
+              }.disabled(address.isEmpty || password.isEmpty)
+            }.disabled(pi.busy)
+            Section("Calendar") {
+              HStack {
+                Text("Add your Google account in System Settings > Internet Accounts first.")
+                Spacer()
+                Button("Allow access") { pi.allowCalendar() }
+              }
+            }
           } else {
             Section("Supported MCP servers") {
               ForEach(PiSettings.supportedMCPServers) { server in
@@ -106,6 +126,7 @@ struct SettingsView: View {
     .onChange(of: page) { _, page in
       pi.status = ""
       if page == .providers { pi.refreshProviders() }
+      if page == .mail { pi.refreshMail() }
     }
     .onChange(of: pi.inputRequest?.id) { _, _ in input = "" }
   }

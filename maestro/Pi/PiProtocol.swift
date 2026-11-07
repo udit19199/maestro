@@ -54,6 +54,7 @@ struct PiEvent: Decodable {
   private(set) var error: String?
   private(set) var method: String?
   private(set) var title: String?
+  private(set) var placeholder: String?
   private(set) var message: PiEventMessage?
   private(set) var options: [String]?
   private(set) var notifyType: String?
@@ -61,7 +62,7 @@ struct PiEvent: Decodable {
   private(set) var data: ResponseData?
 
   private enum CodingKeys: String, CodingKey {
-    case type, id, success, error, method, title, message, options, notifyType
+    case type, id, success, error, method, title, placeholder, message, options, notifyType
     case assistantMessageEvent, data
   }
   init(from decoder: Decoder) throws {
@@ -82,6 +83,7 @@ struct PiEvent: Decodable {
       id = try values.decode(String.self, forKey: .id)
       method = try values.decode(String.self, forKey: .method)
       title = try values.decodeIfPresent(String.self, forKey: .title)
+      placeholder = try values.decodeIfPresent(String.self, forKey: .placeholder)
       message = try values.decodeIfPresent(PiEventMessage.self, forKey: .message)
       options = try values.decodeIfPresent([String].self, forKey: .options)
       notifyType = try values.decodeIfPresent(String.self, forKey: .notifyType)

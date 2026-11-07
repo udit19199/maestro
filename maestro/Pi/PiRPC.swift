@@ -39,7 +39,7 @@ final class PiRPC {
 
   init(
     bot: BotDefinition? = nil, workingDirectory: String? = nil, conversationID: UUID = UUID(),
-    allowMCP: Bool = true
+    allowMCP: Bool = true, inGroup: Bool = false
   ) throws {
     try Self.configure(process)
     if let workingDirectory {
@@ -49,8 +49,11 @@ final class PiRPC {
     }
     var args = ["--mode", "rpc"]
     if let bot {
+      // Each group member keeps its own history; one-bot chats keep the original path.
+      let session =
+        inGroup ? "\(conversationID.uuidString)-\(bot.id.uuidString)" : conversationID.uuidString
       let sessions = Self.configDirectory.appendingPathComponent(
-        "sessions/\(conversationID.uuidString)", isDirectory: true)
+        "sessions/\(session)", isDirectory: true)
       let modelFlag: String
       switch bot.execution {
       case .pi(let provider, let model):
@@ -65,11 +68,17 @@ final class PiRPC {
       case nil:
         modelFlag =
           UserDefaults.standard.string(forKey: "pi_model")
-          ?? "cliauthproxy/gpt-6.1-sol"
+          ?? "relay/claude-sonnet-5-5"
       }
+      // maestro-pi.ts only lets message_bot reach these names.
+      let others = BotLibrary.shared.bots.filter { $0.id != bot.id }.map(\.name)
+      process.environment?["MAESTRO_BOTS"] = others.joined(separator: "\n")
+      let roster =
+        others.isEmpty
+        ? "" : "\n\nOther bots you can hand work to with message_bot: " + others.joined(separator: ", ")
       args += [
-        "--session-dir", sessions.path, "--session-id", conversationID.uuidString,
-        "--append-system-prompt", bot.effectiveSystemPrompt,
+        "--session-dir", sessions.path, "--session-id", session,
+        "--append-system-prompt", bot.effectiveSystemPrompt + roster,
         "--model", modelFlag,
       ]
       for source in bot.skills {

@@ -91,6 +91,34 @@ final class PiSettings: ObservableObject {
     mcpProcess = nil
     status = "Connection setup cancelled."
   }
+  private static let mailFile = PiRPC.configDirectory.appendingPathComponent("mail.json")
+  /// Saves the Gmail address and app password in an owner-only file, then checks them with Gmail.
+  func saveMail(address: String, password: String) {
+    let saved = ["address": address, "password": password.replacingOccurrences(of: " ", with: "")]
+    guard
+      FileManager.default.createFile(
+        atPath: Self.mailFile.path, contents: try? JSONEncoder().encode(saved),
+        attributes: [.posixPermissions: 0o600])
+    else {
+      status = "Could not save the mail settings."
+      return
+    }
+    startRequest(.prompt(id: "mail", message: "/maestro-mail-check"), status: "Checking with Gmail...")
+  }
+  func refreshMail() {
+    let saved = (try? Data(contentsOf: Self.mailFile)).flatMap {
+      try? JSONDecoder().decode([String: String].self, from: $0)
+    }
+    status =
+      (saved?["address"].map { "Mail: \($0)." } ?? "Mail is not set up.")
+      + (MacCalendar.allowed ? " Calendar: allowed." : " Calendar: not allowed yet.")
+  }
+  func allowCalendar() {
+    Task {
+      _ = await MacCalendar.requestAccess()
+      refreshMail()
+    }
+  }
   func refreshProviders() {
     startRequest(
       .prompt(id: "providers", message: "/maestro-providers"),
@@ -164,7 +192,9 @@ final class PiSettings: ObservableObject {
       failed(event.error ?? "pi rejected the setup request.")
       return
     }
-    if event.id == "providers" {
+    if event.id == "mail" {
+      finish()
+    } else if event.id == "providers" {
       finish()
       refreshModels()
     } else if event.id == "login" {

@@ -11,19 +11,24 @@ struct ChatView: View {
     if let conversation = store.conversation(id: conversationID) {
       VStack(spacing: 0) {
         HStack {
-          Picker(
-            "Bot",
-            selection: Binding(
-              get: { conversation.botID },
-              set: { store.selectBot($0, for: conversationID) }
-            )
-          ) {
-            if bots.bot(id: conversation.botID) == nil {
-              Text("Unavailable bot").tag(conversation.botID)
+          if conversation.isGroup {
+            Text(conversation.memberIDs.map { bots.bot(id: $0)?.name ?? "Unavailable bot" }
+              .joined(separator: ", "))
+          } else {
+            Picker(
+              "Bot",
+              selection: Binding(
+                get: { conversation.botID },
+                set: { store.selectBot($0, for: conversationID) }
+              )
+            ) {
+              if bots.bot(id: conversation.botID) == nil {
+                Text("Unavailable bot").tag(conversation.botID)
+              }
+              ForEach(bots.bots) { Text($0.name).tag($0.id) }
             }
-            ForEach(bots.bots) { Text($0.name).tag($0.id) }
+            .disabled(runner.isRunning(conversationID: conversationID))
           }
-          .disabled(runner.isRunning(conversationID: conversationID))
           Spacer()
           Button("Delete Chat", role: .destructive) { store.deleteConversation(conversationID) }
           if runner.isRunning(conversationID: conversationID) {
@@ -55,7 +60,8 @@ struct ChatView: View {
           }
         }
         ComposerView(
-          placeholder: "Message this bot...",
+          placeholder: conversation.isGroup
+            ? "Message the group (type @Name to pick a bot)..." : "Message this bot...",
           isRunning: runner.isRunning(conversationID: conversationID),
           isDisabled: bots.bot(id: conversation.botID) == nil, text: $prompt
         ) {
