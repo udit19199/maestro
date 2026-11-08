@@ -258,6 +258,22 @@ struct BotChatsCheck {
       "sessions/\(group.id.uuidString)-\(criticID.uuidString)")
     precondition(FileManager.default.fileExists(atPath: criticSession.path), "Critic needs its own session")
     print("PASS: in a Host+Critic group, @Critic made Critic answer in the group with its own session: \(answers[0].content)")
+
+    // A mention must name the whole bot: "@Al" must not pick a bot called "Alex".
+    let alID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Al", systemPrompt: "You are Al.", execution: fast))
+    let alexID = try BotLibrary.shared.importBot(
+      BotDefinition(name: "Alex", systemPrompt: "You are Alex.", execution: fast))
+    let mentioning = store.createConversation(
+      bot: BotLibrary.shared.bot(id: hostID)!, extraBotIDs: [alID, alexID, criticID])
+    let speakers = { PiSessions.mentioned(in: $0, mentioning) }
+    precondition(speakers("@Alex hello") == [alexID], "@Alex must pick only Alex")
+    precondition(speakers("@Al hello") == [alID], "@Al must pick only Al")
+    precondition(speakers("@al, you there?") == [alID], "Mentions ignore case and stop at punctuation")
+    precondition(speakers("@Alex and @Al") == [alexID, alID], "Mentions answer in the order written")
+    precondition(speakers("@Alexander hello") == [hostID], "@Alexander is nobody, so the lead bot answers")
+    precondition(speakers("write to bob@Alex.com") == [hostID], "An email address is not a mention")
+    print("PASS: @Al and @Alex are told apart, mentions keep their order, and an email address is not a mention.")
     print(
       "PASS: reply outcomes survive reload; restart marks partial replies interrupted; legacy defaults, pi payloads, and stopping a real process preserve message identity."
     )
