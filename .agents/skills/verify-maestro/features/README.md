@@ -25,5 +25,6 @@ Two layers. The isolated check runs headless in a temp home. The full app layer 
 ## Features
 
 - [New chat walkthrough](./new-chat.md) covers the full app path Home to first message.
+- [Group chats](./groups.md) covers @mentions, whole-name matching, and changing members.
 - [Providers and models](./providers.md) covers Settings catalog and model pick.
 - [Bot persistence check](./bot-persistence.md) covers the isolated script and migration.

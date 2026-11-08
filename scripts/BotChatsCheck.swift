@@ -274,6 +274,17 @@ struct BotChatsCheck {
     precondition(speakers("@Alexander hello") == [hostID], "@Alexander is nobody, so the lead bot answers")
     precondition(speakers("write to bob@Alex.com") == [hostID], "An email address is not a mention")
     print("PASS: @Al and @Alex are told apart, mentions keep their order, and an email address is not a mention.")
+
+    // Group membership can change after creation, and a group never drops below two bots.
+    store.setMembers([alexID, alID], for: mentioning.id)
+    store.setMembers([alID], for: mentioning.id)
+    precondition(
+      store.conversation(id: mentioning.id)?.memberIDs == [alexID, alID],
+      "A group keeps at least two bots and the first listed bot leads")
+    store.persistNow()
+    store.load()
+    precondition(store.conversation(id: mentioning.id)?.memberIDs == [alexID, alID])
+    print("PASS: a group chat's members can change after creation and the change survives reload.")
     print(
       "PASS: reply outcomes survive reload; restart marks partial replies interrupted; legacy defaults, pi payloads, and stopping a real process preserve message identity."
     )

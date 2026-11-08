@@ -96,6 +96,22 @@ final class ConversationStore: ObservableObject {
     scheduleSave()
   }
 
+  /// Changes who is in a group chat: two to six bots, in display order. The first bot leads.
+  /// A one-bot chat keeps its old session path, so this only edits existing groups.
+  func setMembers(_ botIDs: [UUID], for conversationID: UUID) {
+    guard !PiSessions.shared.isRunning(conversationID: conversationID),
+      let index = conversations.firstIndex(where: { $0.id == conversationID }),
+      conversations[index].isGroup,
+      (2...6).contains(botIDs.count), Set(botIDs).count == botIDs.count,
+      botIDs.allSatisfy({ BotLibrary.shared.bot(id: $0) != nil })
+    else { return }
+    PiSessions.shared.stopConversation(conversationID)
+    conversations[index].botID = botIDs[0]
+    conversations[index].extraBotIDs = Array(botIDs.dropFirst())
+    conversations[index].updatedAt = Date()
+    scheduleSave()
+  }
+
   func scheduleSave() {
     saveTask?.cancel()
     saveTask = Task { [weak self] in

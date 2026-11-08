@@ -12,8 +12,29 @@ struct ChatView: View {
       VStack(spacing: 0) {
         HStack {
           if conversation.isGroup {
-            Text(conversation.memberIDs.map { bots.bot(id: $0)?.name ?? "Unavailable bot" }
-              .joined(separator: ", "))
+            Menu {
+              ForEach(bots.bots) { bot in
+                Toggle(
+                  bot.name,
+                  isOn: Binding(
+                    get: { conversation.memberIDs.contains(bot.id) },
+                    set: { on in
+                      var members = conversation.memberIDs
+                      if on { members.append(bot.id) } else { members.removeAll { $0 == bot.id } }
+                      store.setMembers(members, for: conversationID)
+                    })
+                )
+                .disabled(
+                  conversation.memberIDs.contains(bot.id)
+                    ? conversation.memberIDs.count <= 2 : conversation.memberIDs.count >= 6)
+              }
+            } label: {
+              Label(
+                conversation.memberIDs.map { bots.bot(id: $0)?.name ?? "Unavailable bot" }
+                  .joined(separator: ", "), systemImage: "person.2")
+            }
+            .disabled(runner.isRunning(conversationID: conversationID))
+            .help("Change who is in this group")
           } else {
             Picker(
               "Bot",
