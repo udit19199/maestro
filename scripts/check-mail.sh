@@ -22,7 +22,7 @@ const steps = [
   ["Use gmail_send to email test@example.com with subject Hi and body Hello.", "gmail_send", /did not approve/],
   ["Use calendar_list for 2026-11-05T00:00:00+05:30 to 2026-11-06T00:00:00+05:30.", "calendar_list", /only available inside the Maestro app/],
   ["Use message_bot to tell Helper: hello.", "message_bot", /Sent to Helper/],
-  ["Use gmail_search to find my unread email.", "gmail_search", /Gmail sign-in failed/,
+  ["Use gmail_search to find my unread email.", "gmail_search", /Gmail sign-in failed[\s\S]*Gmail said: \S/,
     () => writeFileSync(process.env.PI_CODING_AGENT_DIR + "/mail.json", JSON.stringify({ address: "maestro.check@gmail.com", password: "abcdabcdabcdabcd" }))],
 ];
 let step = 0, seen = "", asked = false, handoff = false;

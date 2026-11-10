@@ -118,16 +118,31 @@ final class PiSessions: ObservableObject {
     } catch { fail(id, error.localizedDescription) }
   }
   /// Group members @mentioned in `text`, in the order they appear; else the lead bot.
-  // ponytail: plain substring match, so "@Al" also matches a bot named "Alex".
-  private static func mentioned(in text: String, _ chat: Conversation) -> [UUID] {
+  /// Not private: the isolated check in scripts/BotChatsCheck.swift calls it.
+  static func mentioned(in text: String, _ chat: Conversation) -> [UUID] {
     guard chat.isGroup else { return [chat.botID] }
     let found = chat.memberIDs.compactMap { id -> (String.Index, UUID)? in
       guard let name = BotLibrary.shared.bot(id: id)?.name,
-        let range = text.range(of: "@" + name, options: .caseInsensitive)
+        let range = mentionRange(of: name, in: text)
       else { return nil }
       return (range.lowerBound, id)
     }
     return found.isEmpty ? [chat.botID] : found.sorted { $0.0 < $1.0 }.map(\.1)
+  }
+  /// Where `@name` appears as a whole word, so "@Al" does not match a bot named "Alex".
+  private static func mentionRange(of name: String, in text: String) -> Range<String.Index>? {
+    let joins = { (character: Character?) in
+      character.map { $0.isLetter || $0.isNumber || $0 == "_" } ?? false
+    }
+    var search = text.startIndex..<text.endIndex
+    while let range = text.range(of: "@" + name, options: .caseInsensitive, range: search) {
+      let before = range.lowerBound == text.startIndex
+        ? nil : text[text.index(before: range.lowerBound)]
+      let after = range.upperBound == text.endIndex ? nil : text[range.upperBound]
+      if !joins(before) && !joins(after) { return range }
+      search = range.upperBound..<text.endIndex
+    }
+    return nil
   }
   /// The group lines a member has not seen: everything after its own last reply.
   private static func unseen(by botID: UUID, in chat: Conversation) -> String {

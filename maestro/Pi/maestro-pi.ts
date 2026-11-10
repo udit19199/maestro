@@ -163,8 +163,10 @@ async function imap<T>(work: (run: Run) => Promise<T>): Promise<T> {
   };
   try {
     await read();
-    await run(`LOGIN ${quote(address)} ${quote(password)}`).catch(() => {
-      throw new Error(`Gmail sign-in failed. Check the address and app password in ${setup}, and that IMAP is on in Gmail settings.`);
+    await run(`LOGIN ${quote(address)} ${quote(password)}`).catch((error: Error) => {
+      // Gmail's own reply separates a stale app password from IMAP being off; show it.
+      const said = error.message.replace(/^Gmail refused LOGIN: /, "").replace(/^(NO|BAD) /, "");
+      throw new Error(`Gmail sign-in failed. Check the address and app password in ${setup}, and that IMAP is on in Gmail settings. Gmail said: ${said}`);
     });
     return await work(run);
   } finally {

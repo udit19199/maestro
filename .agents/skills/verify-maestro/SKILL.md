@@ -63,5 +63,6 @@ Full app walkthrough is manual and read-only by default: Home → conversation s
 ## Features
 
 - [New chat walkthrough](features/new-chat.md)
+- [Group chats](features/groups.md)
 - [Providers and models](features/providers.md)
 - [Bot persistence check](features/bot-persistence.md)
