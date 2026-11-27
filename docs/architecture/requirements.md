@@ -18,7 +18,7 @@ It is open source. Each user installs the app and runs their own instance.
 | G6 | Bring your own model: any pi provider, with Relay as one option | Switching provider is a setting, not code |
 | G7 | Open files: bots, skills and routines are readable by other agent tools | A bot file loads in Claude Code through the `.claude/agents` link (bot-files.md §5) |
 | G8 | Routines run while the window is closed | A 08:00 routine runs with only the menu bar icon showing (routines.md) |
-| G9 | Google sign-in in one click, with no backend | A new user connects Gmail without opening Google Cloud (connectors.md §2) |
+| G9 | Mail sign-in with no backend and nothing run by the maintainer | A new user connects Gmail with an app password in about 2 minutes, without opening Google Cloud (connectors.md §2) |
 
 ## 3. Non-goals for v1
 
@@ -35,7 +35,7 @@ It is open source. Each user installs the app and runs their own instance.
 - pi (`@earendil-works/pi-coding-agent`), pinned to an exact version, embedded through its SDK.
 - Node 24, bundled in the app (open question Q4).
 - No dependency on a third-party token broker (Composio and similar). A user's tokens stay on their Mac.
-- Restricted Google scopes (Gmail) on an unverified app: at most 100 users in total, each clicking past Google's "unverified app" screen. Past 100, the app needs Google verification and a yearly security assessment (connectors.md §2.4).
+- The maintainer runs no server and owns no Google Cloud project. Each user's mail sign-in is their own app password or their own OAuth client (connectors.md §2).
 - dusk.bot is source-available under PolyForm Noncommercial: read for ideas, never copy code.
 
 ## 5. Quality targets

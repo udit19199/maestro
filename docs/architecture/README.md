@@ -58,7 +58,7 @@ Each line is settled. A change needs a new line, not an edit.
 | D7 | 2026-11-27 | SQLite is the store for everything Maestro owns. pi's JSONL is the store for model context only | One writer, transactions, FTS; pi keeps its own compaction format | storage.md |
 | D8 | 2026-11-27 | Reads, Maestro-only changes and reversible changes to the user's own data run without asking. Anything other people see, and anything permanent, asks first | Users want no approval friction; a send cannot be taken back | permissions.md |
 | D9 | 2026-11-27 | Asking never blocks the bot: an outward action becomes a proposal and the tool returns at once | One sweep can leave five proposals without waiting between them | permissions.md |
-| D10 | 2026-11-27 | Google sign-in uses a Desktop OAuth client that Maestro ships in the app, with loopback redirect and PKCE. Users can bring their own client. Gmail app password stays as a fallback | One click, no backend. Google allows an embedded secret for installed apps | connectors.md |
+| D10 | 2026-11-27 | Maestro ships no OAuth client. Mail defaults to an app password; users can add their own Google Desktop OAuth client (loopback + PKCE) for the Gmail API | The maintainer runs and owns nothing: no Cloud project, no user cap, no verification | connectors.md |
 | D11 | 2026-11-27 | Bots, skills and routines are open-standard files under one workspace folder; state is in Application Support | Users and other tools can read and edit them; git works | bot-files.md |
 | D12 | 2026-11-27 | Types are defined once in TypeBox in the core; JSON Schema is generated from them; Swift `Codable` types are generated from the schema | One source for wire types, checked at the trust boundary | protocol.md |
 | D13 | 2026-11-27 | dusk.bot code is read, never copied (PolyForm Noncommercial) | License | — |
@@ -69,7 +69,6 @@ Each has an owner and a default. Build uses the default until it is answered.
 
 | # | Question | Default | Blocks |
 |---|---|---|---|
-| Q1 | Who owns the Google Cloud project for the shipped OAuth client? | Udit creates `maestro-app` | connectors.md §2 |
 | Q2 | iMessage: the owner's self-chat, or a second Apple ID for the bot (which takes over the Mac's Messages)? | Self-chat | channels.md §3 |
 | Q3 | Episode gap for iMessage | 2 hours | channels.md §4 |
 | Q4 | Bundle Node in the app, or require Node on the system? | Bundle Node 24 | system.md §5 |

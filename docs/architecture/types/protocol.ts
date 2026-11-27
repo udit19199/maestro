@@ -111,7 +111,7 @@ export interface ShellCommands {
   "routine.setEnabled": { params: { routineId: RoutineId; enabled: boolean }; result: RoutineState };
   "routine.runNow": { params: { routineId: RoutineId }; result: { threadId: ThreadId } };
 
-  "connection.googleSignIn": { params: { client: "maestro" | "own"; ownClient?: { clientId: string; clientSecret: string } }; result: { connectionId: ConnectionId } };
+  "connection.googleSignIn": { params: { clientId: string; clientSecret: string }; result: { connectionId: ConnectionId } };
   "connection.imapAdd": { params: { address: string; appPassword: string }; result: Connection };
   "connection.remove": { params: { connectionId: ConnectionId }; result: { ok: true } };
 

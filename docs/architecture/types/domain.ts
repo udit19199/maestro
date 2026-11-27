@@ -431,7 +431,7 @@ export interface RoutineRun {
 // ---------- Connections and channels ----------
 
 export type ConnectionAuth =
-  | { kind: "google_oauth"; client: "maestro" | "own"; scopes: string[] }
+  | { kind: "google_oauth"; clientId: string; scopes: string[] }
   | { kind: "imap_app_password"; imapHost: string; smtpHost: string }
   | { kind: "mcp"; transport: "stdio" | "http"; oauth: boolean }
   | { kind: "api_key"; provider: string };

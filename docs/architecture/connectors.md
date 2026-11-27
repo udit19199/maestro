@@ -37,35 +37,30 @@ interface MailBackend {
 
 ### 2.2 What Maestro does
 
-Google treats a desktop app as an **installed app**: the client id and secret are embedded in the app, and "the client secret is obviously not treated as a secret" (developers.google.com/identity/protocols/oauth2, "Installed applications"). So a one-click sign-in needs **no backend**:
+The maintainer runs nothing and owns no Google Cloud project (decision D10). Maestro ships no OAuth client, so there is no shared user cap, verification or security assessment. Each user picks one path:
 
-1. Maestro ships a Desktop OAuth client id and secret from a Google Cloud project Maestro owns (open question Q1).
+| Path | Default? | Setup |
+|---|---|---|
+| **App password** | Yes | Turn on 2-step verification, make an app password, paste it with the address. About 2 minutes. IMAP/SMTP over TLS. Also covers non-Gmail IMAP accounts. No Gmail labels API (uses IMAP folders and flags), no history sync (uses IMAP IDLE plus UID polling) |
+| **Own Google client** | No, under Settings → Advanced | Make a Google Cloud project in **Personal mode** (only the creator's account; no verification and no warning screen), add a Desktop OAuth client, paste the id and secret. About 10 minutes, the same as Hermes. Gives the Gmail API: labels, drafts, history sync |
+
+The own-client flow below needs **no backend**. Google treats a desktop app as an **installed app**, and "the client secret is obviously not treated as a secret" (developers.google.com/identity/protocols/oauth2, "Installed applications").
+
+1. The user pastes their client id and secret in Settings.
 2. The user clicks **Sign in with Google**. The core starts a listener on `127.0.0.1:<random port>`, makes a PKCE pair, and asks the shell to open Google's consent page (`browser.open`) with redirect `http://127.0.0.1:<port>`.
-3. The user picks the account. Google shows "Google hasn't verified this app"; they click **Advanced → Go to Maestro**, then allow access.
+3. The user picks the account and allows access. A Personal-mode project shows no warning screen.
 4. Google redirects to the loopback listener with a code. The core exchanges it for tokens, stores the refresh token in Keychain (`keychain.set`), and closes the listener.
 5. The core calls Gmail `users.getProfile` to read the address, creates the `connections` row, and starts sync.
 
-What the user sees: one button, a browser tab, one warning click, done.
-
 Scopes: `openid email https://www.googleapis.com/auth/gmail.modify`. `gmail.modify` covers read, label, draft and send, and does not allow permanent deletion (Gmail API scopes page). So `mail_trash` moves to Trash only.
 
-### 2.3 Other paths
+### 2.3 Google's limits (own client)
 
-| Path | For | Setup |
-|---|---|---|
-| **Own client** | Anyone who forks Maestro, anyone after the 100-user cap, anyone who does not want the warning screen | Make a Google Cloud project in **Personal mode** (only the creator's account; no verification and no warning screen), add a Desktop client, paste id and secret in Settings. Same flow as §2.2 with their client |
-| **App password** | Users who will not touch Google Cloud, and non-Gmail IMAP accounts | Turn on 2-step verification, make an app password, paste it. IMAP/SMTP over TLS. No Gmail labels API (uses IMAP folders and flags), no history sync (uses IMAP IDLE plus UID polling) |
-
-### 2.4 Google's limits
-
-- An unverified app with restricted scopes (Gmail) works for **fewer than 100 users**, each clicking past the warning (Google Cloud help, "When is verification not needed").
-- Past 100 users, the app needs verification, which for restricted scopes includes a yearly security assessment by a Google-approved assessor (Google Cloud help, "Verification requirements" §5).
-- The project must be **In production**, not **Testing**: a Testing app's refresh tokens expire after 7 days (oauth2 docs, "Refresh token expiration").
+- The setup guide tells the user to set the project to **In production**, not **Testing**: a Testing app's refresh tokens expire after 7 days (oauth2 docs, "Refresh token expiration").
 - At most 100 live refresh tokens per Google account per client; more and the oldest stops working. Maestro keeps one per account.
+- A shared, Maestro-owned client was rejected: it would need a maintainer-owned project, and past 100 users Google verification plus a yearly security assessment.
 
-So: the shipped client is fine while Maestro has under 100 users. When that is close, either verify, or make "own client" the default and keep the shipped one for existing users.
-
-### 2.5 Token handling
+### 2.4 Token handling
 
 - Access tokens live in memory. The core refreshes 5 minutes before expiry, and once on a 401 (then retries the call once).
 - If Google refuses the refresh token, the connection becomes `needs_reconnect`, mail tools answer "Gmail needs you to sign in again", and Today shows a reconnect row. Reconnecting keeps the same `connectionId`.

@@ -48,7 +48,7 @@ The design does not depend on the model resisting injection. What stops harm:
 
 - In Keychain only (connectors.md §6). In memory in the core while it runs. Never in SQLite, logs, events or prompts.
 - Logs redact anything matching token patterns before writing.
-- The Google client secret shipped in the app is not a secret by Google's own definition (connectors.md §2.2); it is in the source.
+- The app ships no Google client. A user's own client id and secret are stored in Keychain with their tokens (connectors.md §2.2).
 
 ## 7. Data leaving the Mac
 
