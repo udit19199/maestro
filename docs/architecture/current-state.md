@@ -1,6 +1,6 @@
-# Architecture
+# Current state
 
-Owner: Staff · Maestro lead. Written 15 Nov 2026 from `main` at `3444e9b`. "Measured" means a number from a run. "Suspected" means a reading of the code that build must still measure.
+How the app on `main` works today, before the redesign in this folder. Written 15 Nov 2026 from `main` at `3444e9b`. "Measured" means a number from a run. "Suspected" means a reading of the code that build must still measure.
 
 ## 1. How the app works today
 
@@ -68,37 +68,6 @@ What follows from the numbers and the code (suspected until build measures it):
 
 Build's baseline should measure: cold start of the app, time from Send to the first word on screen, memory at idle and with 3 chats (app plus all pi children), CPU at idle, frame time while streaming a 2,000-word reply into a chat with 200 messages, and time per mail tool call.
 
-## 3. Target architectures
+## 3. Target
 
-Every option keeps pi. pi runs on Node, so a Node runtime is always present whatever the shell language is. The real choices are how many Node processes there are, and who owns orchestration and storage.
-
-### A. Keep the shape, fix the hot paths (Swift shell, pi per chat)
-
-- Stream into a per-run buffer and publish at most once per frame. Give each chat its own observable object (`@Observable`), so streaming does not re-render the sidebar. Split long replies into blocks so only the last block is laid out again.
-- Store chats as one append-only file each (or SQLite), written off the main thread.
-- Stop pi processes after N minutes idle. A restart costs about 210 ms because pi reloads its session from disk.
-- Keep IMAP open for a short time in each pi process.
-
-Trade-offs: the smallest change and the lowest risk, and Swift stays. Memory still grows with the number of active chats. Two copies of the history remain. Each pi process still has its own mail connection and MCP processes.
-
-### B. One core process: pi SDK in Node, thin shell (recommended direction)
-
-- One long-lived `maestro-core` Node process embeds pi through its SDK (`createAgentSession`; one `AgentSession` per chat × bot, all in one process; pi `docs/sdk.md`). It owns orchestration (routing, @mentions, hand-offs, hop limit, approvals), one shared IMAP connection with a local mail cache, MCP clients shared by all sessions, and storage. pi's session JSONL is the one record of history, and the UI reads from it.
-- The shell becomes a view. It connects to the core over one socket or stdio stream that carries events for all chats. It owns windows, approval cards, EventKit (calendar access is granted to the app) and notifications.
-- Expected: about 120 MB for one Node process plus a few MB per session, instead of 116 MB per session. New chats start in milliseconds instead of 210–460 ms. Hand-offs become function calls. The shell language no longer matters for logic, so Swift, Rust or anything else is only a UI choice.
-
-Trade-offs: hand-offs and group routing move from Swift to TypeScript (a rewrite of about 600 lines). The SDK does not load MCP, codemode or tool_search by default; they must be added explicitly (`docs/sdk.md` §codemode-mcp). One crash in the core stops every chat, so the shell must restart it. pi runs inside our process, so a pi upgrade can break the core at build time instead of at the RPC boundary.
-
-### C. Rust core plus pi RPC processes, native or webview shell
-
-- A Rust process owns orchestration, storage (SQLite) and mail (async IMAP with a cache), and starts pi RPC processes as Swift does today. The shell is Tauri (webview) or a native frontend.
-
-Trade-offs: Rust makes the parts that are already cheap faster (routing, JSON, storage). It keeps the most expensive part: one Node process per session. It is the largest rewrite, and a webview shell probably uses more memory than SwiftUI. It is worth choosing only if the stack thread measures a large UI-side win that Swift cannot match.
-
-### Current lean, not a decision
-
-B's core with whatever shell the stack thread measures as best. Do A's UI fixes (frame-rate publishing, per-chat observation, block layout) in any shell. The decision, with an independent Opus critique, goes in §4 when the stack recommendation lands.
-
-## 4. Decision
-
-Pending: waiting for the stack thread's measured recommendation.
+The options weighed on 15 Nov are settled: decision D2 in [README.md](README.md) picks one core process with the pi SDK and a Swift shell.
