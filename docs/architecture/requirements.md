@@ -57,12 +57,13 @@ Measured on an M-series Mac with 24 GB. The design file for the shell (`docs/DES
 
 Each is a claim the design depends on that nobody has tested yet. operations.md §6 lists the test for each.
 
-| # | Assumption |
-|---|---|
-| A1 | Many `AgentSession`s in one process stay near 2 MB each after real use (measured only idle) |
-| A2 | One MCP client per server can be shared by all sessions through `McpExtensionOptions.createTransport` (pi keeps MCP state per extension instance) |
-| A3 | `before_agent_start` can add the ledger block as a section without breaking the provider's prompt cache for the stable prefix |
-| A4 | A child process started by `Maestro.app` is covered by the app's Full Disk Access and Automation grants (needed for iMessage) |
-| A5 | `chat.db` records which message an iMessage reply answers (`thread_originator_guid`) |
-| A6 | `node:sqlite` in Node 24 is stable enough for WAL mode, FTS5 and one writer |
-</content>
+Spikes run 28 Nov 2026 on pi 1.2.0, Node 26.13.1, scripts in `~/Workspace/local/maestro/spikes-2026-11-28/`.
+
+| # | Assumption | Result |
+|---|---|---|
+| A1 | Many `AgentSession`s in one process stay small after real use | **Held.** 20 sessions × 201 messages (2 KB tool output each, 2,000 faux model calls): 0.66 MB heap per session, 182 MB RSS for the whole process |
+| A2 | One MCP server process can serve all sessions through `McpExtensionOptions.createTransport` | **Held, with Maestro code.** By default each session starts its own server (3 sessions → 3 processes). A shared transport in `createTransport` (one stdio connection, per-session id rewriting, cached `initialize`) gave 1 process and correct results for all 3. Server-sent notifications (`tools/list_changed`) must be broadcast to every session; not built yet |
+| A3 | The ledger can change between runs without breaking the prompt cache | **Held as a section, failed as a prompt rewrite.** Haiku through Relay, 11.8k-token prefix, ledger changed before run 3: as `systemPromptOptions.sections.ledger`, run 3 read 11,859 tokens from cache; appended to the full system prompt, run 3 read 0. **Needs Relay `routing.session-affinity: true`**: with it off (Udit's config), round-robin over 3 Claude accounts gave 0 cache reads on every run, changed or not |
+| A4 | A child process started by `Maestro.app` is covered by the app's Full Disk Access and Automation grants (needed for iMessage) | Not run: needs a Full Disk Access grant |
+| A5 | `chat.db` records which message an iMessage reply answers (`thread_originator_guid`) | Not run: needs a reply from an iPhone |
+| A6 | `node:sqlite` handles WAL, FTS5 and one writer with readers | **Held** on Node 26 (SQLite 3.54.1): schema.sql loads, 10,000 FTS inserts in 643 ms while a reader thread ran 13,300 searches with 0 errors (max 5.5 ms); `contentless_delete` removes rows. Not rerun on Node 24 |
