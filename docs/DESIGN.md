@@ -1,6 +1,8 @@
 # Design
 
-Owner: Staff · Maestro design. Rewritten 15 Nov 2026 from `main` at `3444e9b`. The old version is in `docs/DESIGN.md.bak-15-11-2026`. Architecture lives in `docs/ARCHITECTURE.md`; this file describes behaviour and screens, not widgets.
+Owner: Staff · Maestro design. Rewritten 15 Nov 2026 from `main` at `3444e9b`. The old version is in `docs/DESIGN.md.bak-15-11-2026`. Architecture lives in `docs/architecture/`; this file describes behaviour and screens, not widgets.
+
+**Changed 27 Nov 2026:** labels, archive, drafts and calendar changes without guests now run without asking, with receipts and undo (`docs/architecture/permissions.md`). The approval queue below holds only actions other people see (sends, invites, replies) and permanent ones. Where this file says those reversible actions need approval, permissions.md wins.
 
 Maestro has one daily use: bots read Udit's Gmail and the Mac's calendars, propose what to do, and do nothing that sends, drafts, labels or changes an event until he approves it. Everything below serves that loop. If a screen or control does not help it, it is cut (section 8).
 
@@ -402,7 +404,7 @@ Targets are for Udit's Mac (M-series, 24 GB) with Maestro in normal use. Each ta
 
 | What | Target |
 |---|---|
-| First word on screen after Return | Relay's time to first token plus under 150 ms of Maestro overhead. Build measures both parts separately. Today a new chat adds 210 to 460 ms for pi to start (`ARCHITECTURE.md` §2); that must go (a warm session or the single core) |
+| First word on screen after Return | Relay's time to first token plus under 150 ms of Maestro overhead. Build measures both parts separately. Today a new chat adds 210 to 460 ms for pi to start (`architecture/current-state.md` §2); that must go (a warm session or the single core) |
 | Model text | Painted at most once per frame. While streaming a 2,000-word reply into a 200-message chat: no frame over 16.7 ms, and Instruments' hitch time under 5 ms per second |
 | Tool lines | Appear when the tool starts, not when it ends |
 | Proposals | Join the queue when the bot makes them, not at the end of the run |
@@ -434,7 +436,7 @@ These may take time but must show their own progress and never block typing, swi
 | Memory with 3 chats used since launch | Under 450 MB |
 | Mail tool call (search, 10 results) | Under 1 s on a warm connection |
 
-The memory targets assume the single core (`ARCHITECTURE.md` option B). With one pi process per chat, 3 chats already use about 350 MB in pi alone.
+The memory targets assume the single core (`architecture/system.md`). With one pi process per chat, 3 chats already use about 350 MB in pi alone.
 
 ### 7.5 Motion
 
