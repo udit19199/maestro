@@ -35,7 +35,7 @@ It is open source. Each user installs the app and runs their own instance.
 - pi (`@earendil-works/pi-coding-agent`), pinned to an exact version, embedded through its SDK.
 - Node 24, bundled in the app (open question Q4).
 - No dependency on a third-party token broker (Composio and similar). A user's tokens stay on their Mac.
-- The maintainer runs no server and owns no Google Cloud project. Each user's mail sign-in is their own app password or their own OAuth client (connectors.md §2).
+- The maintainer runs no server and owns no Google Cloud project. v1 mail is Gmail over IMAP with an app password (connectors.md §2).
 - dusk.bot is source-available under PolyForm Noncommercial: read for ideas, never copy code.
 
 ## 5. Quality targets

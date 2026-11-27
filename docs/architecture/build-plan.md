@@ -13,7 +13,7 @@ From today's app (current-state.md) to this design. Each step is one PR that lea
 | 4 | **Shell on the core**: Swift generated types, `CoreClient`, snapshot cache, history paging; old `PiSessions` path removed | The app does today's direct chats through the core |
 | 5 | **Groups and hand-offs**: routing, `seen_seq`, `message_bot`, task threads, hop and run budgets | Group @mentions and hand-offs work as today, plus limits |
 | 6 | **Gate and proposals**: effect table, policy, proposals, holds, undo, receipts | A sweep labels without asking and proposes sends; crash tests for §2 pass |
-| 7 | **Mail backends**: IMAP with app password (default), Gmail API with the user's own Google client, sync and cache | App-password sign-in in under 2 minutes; mail tools work on both backends |
+| 7 | **Mail**: Gmail over IMAP/SMTP with app password, sync and cache | App-password sign-in in under 2 minutes; every mail tool works |
 | 8 | **Calendar through host requests** | Calendar tools work with the grant; clear message without it |
 | 9 | **Memory, ledger, recall, carry-over** | The ledger block shows a promise from another thread; audience rule tests pass |
 | 10 | **Routines** | 08:00 routine runs with the window closed; missed-run rules hold |

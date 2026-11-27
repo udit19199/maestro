@@ -48,9 +48,8 @@ The design does not depend on the model resisting injection. What stops harm:
 
 - In Keychain only (connectors.md §6). In memory in the core while it runs. Never in SQLite, logs, events or prompts.
 - Logs redact anything matching token patterns before writing.
-- The app ships no Google client. A user's own client id and secret are stored in Keychain with their tokens (connectors.md §2.2).
 
 ## 7. Data leaving the Mac
 
-Only to: the model provider the user chose, Google (Gmail API, OAuth), Apple (iMessage), and MCP servers the user added. No telemetry, no crash upload, no update check except the one the user turns on.
+Only to: the model provider the user chose, Gmail (IMAP/SMTP), Apple (iMessage), and MCP servers the user added. No telemetry, no crash upload, no update check except the one the user turns on.
 </content>

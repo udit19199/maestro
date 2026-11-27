@@ -283,7 +283,7 @@ CREATE TABLE mail_bodies (
 
 CREATE TABLE sync_cursors (
   connection_id TEXT PRIMARY KEY REFERENCES connections(id) ON DELETE CASCADE,
-  cursor        TEXT NOT NULL, -- Gmail historyId, or IMAP "<uidvalidity>:<highestmodseq>"
+  cursor        TEXT NOT NULL, -- IMAP "<uidvalidity>:<highestmodseq>"
   synced_at     TEXT NOT NULL
 ) STRICT;
 

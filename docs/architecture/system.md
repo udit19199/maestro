@@ -14,7 +14,7 @@ maestro-core (Node 24, bundled; one process)
  │
  ├─ pi SDK: one AgentSession per (thread, bot, episode), created on demand
  ├─ MCP servers: one client per configured server, shared by all sessions
- └─ HTTPS: model providers (Relay at 127.0.0.1:8317 or any pi provider), Gmail API, Google OAuth
+ └─ HTTPS: model providers (Relay at 127.0.0.1:8317 or any pi provider), Gmail IMAP/SMTP
 ```
 
 - The app is the parent of the core. Closing the window does not quit the app; it stays in the menu bar so routines and channels keep running. Quitting the app stops the core.

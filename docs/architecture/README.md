@@ -58,7 +58,7 @@ Each line is settled. A change needs a new line, not an edit.
 | D7 | 2026-11-27 | SQLite is the store for everything Maestro owns. pi's JSONL is the store for model context only | One writer, transactions, FTS; pi keeps its own compaction format | storage.md |
 | D8 | 2026-11-27 | Reads, Maestro-only changes and reversible changes to the user's own data run without asking. Anything other people see, and anything permanent, asks first | Users want no approval friction; a send cannot be taken back | permissions.md |
 | D9 | 2026-11-27 | Asking never blocks the bot: an outward action becomes a proposal and the tool returns at once | One sweep can leave five proposals without waiting between them | permissions.md |
-| D10 | 2026-11-27 | Maestro ships no OAuth client. Mail defaults to an app password; users can add their own Google Desktop OAuth client (loopback + PKCE) for the Gmail API | The maintainer runs and owns nothing: no Cloud project, no user cap, no verification | connectors.md |
+| D10 | 2026-11-27 | v1 mail is the owner's Gmail over IMAP/SMTP with an app password. No OAuth client; Gmail API sign-in is later | Works today; the maintainer runs and owns nothing | connectors.md |
 | D11 | 2026-11-27 | Bots, skills and routines are open-standard files under one workspace folder; state is in Application Support | Users and other tools can read and edit them; git works | bot-files.md |
 | D12 | 2026-11-27 | Types are defined once in TypeBox in the core; JSON Schema is generated from them; Swift `Codable` types are generated from the schema | One source for wire types, checked at the trust boundary | protocol.md |
 | D13 | 2026-11-27 | dusk.bot code is read, never copied (PolyForm Noncommercial) | License | — |

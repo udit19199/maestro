@@ -4,7 +4,7 @@
 
 | Connector | Tools | Backed by |
 |---|---|---|
-| Mail | `mail_search`, `mail_read`, `mail_thread`, `mail_label`, `mail_draft`, `mail_send`, `mail_reply`, `mail_trash` | Gmail API (Google sign-in) or IMAP/SMTP (app password) |
+| Mail | `mail_search`, `mail_read`, `mail_thread`, `mail_label`, `mail_draft`, `mail_send`, `mail_reply`, `mail_trash` | Gmail over IMAP/SMTP with an app password |
 | Calendar | `calendar_list`, `calendar_events`, `calendar_create`, `calendar_update`, `calendar_delete`, `calendar_respond` | EventKit, through the shell. Google calendars show up if the user added the Google account to macOS |
 | Messages | `messages_send` | Messages.app, through the shell (channels.md) |
 | MCP | Whatever the server offers | pi's MCP extension, one client per server |
@@ -25,53 +25,29 @@ interface MailBackend {
 }
 ```
 
-## 2. Google sign-in
+## 2. Mail sign-in
 
-### 2.1 How others do it (checked 27 Nov 2026)
+v1 is Gmail over IMAP/SMTP with an app password, for the owner's own account (decision D10). No Google Cloud project, no OAuth client, no server.
 
-| Product | How Gmail access works |
-|---|---|
-| Hermes Agent | Each user makes their own Google Cloud project and a "Desktop app" OAuth client, then pastes the client id and secret (hermes-agent docs, google-workspace skill `setup.py`). About 10 minutes of setup |
-| dusk.bot | Gmail goes through Composio, a third party that holds the OAuth tokens, or through an app password over IMAP. Its own "Sign in with Google" asks only for name and email (`docs/composio.md`, `apps/dashboard/server/auth/providers.ts`) |
-| Relay | Signs in to Claude, Codex and xAI with those vendors' own CLI client ids. It has no Google sign-in |
+1. The user turns on 2-step verification and makes a Google app password.
+2. In Settings they paste the address and the app password (`connection.imapAdd`).
+3. The core logs in to `imap.gmail.com:993` and `smtp.gmail.com:465` over TLS, stores the password in Keychain, creates the `connections` row and starts sync.
+4. If the login fails, the connection becomes `needs_reconnect` with Gmail's own refusal text, and Today shows a reconnect row.
 
-### 2.2 What Maestro does
+Gmail over IMAP: labels are IMAP folders (`X-GM-LABELS` where the server allows it), Trash is `[Gmail]/Trash`, search uses `X-GM-RAW` so Gmail search syntax works.
 
-The maintainer runs nothing and owns no Google Cloud project (decision D10). Maestro ships no OAuth client, so there is no shared user cap, verification or security assessment. Each user picks one path:
+### 2.1 Later, not v1
 
-| Path | Default? | Setup |
-|---|---|---|
-| **App password** | Yes | Turn on 2-step verification, make an app password, paste it with the address. About 2 minutes. IMAP/SMTP over TLS. Also covers non-Gmail IMAP accounts. No Gmail labels API (uses IMAP folders and flags), no history sync (uses IMAP IDLE plus UID polling) |
-| **Own Google client** | No, under Settings → Advanced | Make a Google Cloud project in **Personal mode** (only the creator's account; no verification and no warning screen), add a Desktop OAuth client, paste the id and secret. About 10 minutes, the same as Hermes. Gives the Gmail API: labels, drafts, history sync |
-
-The own-client flow below needs **no backend**. Google treats a desktop app as an **installed app**, and "the client secret is obviously not treated as a secret" (developers.google.com/identity/protocols/oauth2, "Installed applications").
-
-1. The user pastes their client id and secret in Settings.
-2. The user clicks **Sign in with Google**. The core starts a listener on `127.0.0.1:<random port>`, makes a PKCE pair, and asks the shell to open Google's consent page (`browser.open`) with redirect `http://127.0.0.1:<port>`.
-3. The user picks the account and allows access. A Personal-mode project shows no warning screen.
-4. Google redirects to the loopback listener with a code. The core exchanges it for tokens, stores the refresh token in Keychain (`keychain.set`), and closes the listener.
-5. The core calls Gmail `users.getProfile` to read the address, creates the `connections` row, and starts sync.
-
-Scopes: `openid email https://www.googleapis.com/auth/gmail.modify`. `gmail.modify` covers read, label, draft and send, and does not allow permanent deletion (Gmail API scopes page). So `mail_trash` moves to Trash only.
-
-### 2.3 Google's limits (own client)
-
-- The setup guide tells the user to set the project to **In production**, not **Testing**: a Testing app's refresh tokens expire after 7 days (oauth2 docs, "Refresh token expiration").
-- At most 100 live refresh tokens per Google account per client; more and the oldest stops working. Maestro keeps one per account.
-- A shared, Maestro-owned client was rejected: it would need a maintainer-owned project, and past 100 users Google verification plus a yearly security assessment.
-
-### 2.4 Token handling
-
-- Access tokens live in memory. The core refreshes 5 minutes before expiry, and once on a 401 (then retries the call once).
-- If Google refuses the refresh token, the connection becomes `needs_reconnect`, mail tools answer "Gmail needs you to sign in again", and Today shows a reconnect row. Reconnecting keeps the same `connectionId`.
+- **Google OAuth (Gmail API)** with each user's own Desktop client: Hermes's model (each user makes a Google Cloud project). Only when other users need it.
+- A Maestro-owned shared client is rejected: the maintainer would own a project, and past 100 users Google needs verification and a yearly security assessment.
+- Composio and other token brokers are rejected: a third party would hold the Gmail login.
 
 ## 3. Mail sync and cache
 
-- Gmail API: on start and every 60 s, `users.history.list` from the stored `historyId`; changed messages' headers go into `mail_messages`. If the history id is too old (404), a full resync of the last 90 days of headers.
-- IMAP: IDLE on INBOX, with a UID poll every 5 minutes for other folders.
+- IDLE on INBOX, with a UID poll every 5 minutes for other folders.
 - Bodies are fetched on `mail_read` and kept 14 days (`mail_bodies`).
 - New-mail routine triggers come from sync (routines.md §2).
-- Mail search goes to Gmail; results fill the cache. Tools read headers from the cache when they can.
+- Mail search goes to Gmail (`X-GM-RAW`); results fill the cache. Tools read headers from the cache when they can.
 
 ## 4. Calendar
 
@@ -91,7 +67,6 @@ Scopes: `openid email https://www.googleapis.com/auth/gmail.modify`. `gmail.modi
 
 | Secret | Where | Who reads it |
 |---|---|---|
-| Google refresh tokens | Keychain `ai.maestro` / `google:<connectionId>` | Core, at start, via `keychain.get` |
 | IMAP app passwords | Keychain `imap:<connectionId>` | Core |
 | Model API keys | Keychain `model:<provider>` | Core, set into pi with `ModelRuntime.setRuntimeApiKey` |
 | MCP env and headers | Keychain `mcp:<name>` | Core, when starting the server |
