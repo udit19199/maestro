@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Core, HOP_LIMIT } from "../src/core.ts";
-import { loadBot } from "../src/bots.ts";
+import type { Bot } from "../src/bots.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "maestro-faux-"));
 
@@ -54,9 +54,9 @@ function step(ctx: { messages: CtxMessage[] }) {
 }
 faux.appendResponses(Array.from({ length: 50 }, () => step));
 
-const bots = [
-  loadBot(new URL("./bots/nami.md", import.meta.url).pathname),
-  loadBot(new URL("./bots/robin.md", import.meta.url).pathname),
+const bots: Bot[] = [
+  { id: "nami", description: "finder", tools: ["message_bot"], mcp: [], instructions: "You are Nami. Hand off to Robin." },
+  { id: "robin", description: "drafter", tools: ["save_draft"], mcp: [], instructions: "You are Robin. Save drafts." },
 ];
 const core = new Core({ runtime, model, bots, runDir: dir });
 
