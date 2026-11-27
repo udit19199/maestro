@@ -56,7 +56,10 @@ Gmail over IMAP: labels are IMAP folders (`X-GM-LABELS` where the server allows 
 - Event refs are EventKit `calendarItemExternalIdentifier`s, stable across devices.
 - `calendar_respond` maps to EventKit participant status where the calendar allows it; where it does not, the tool says so.
 
-## 5. MCP servers
+## 5. MCP servers (not in v1, decision D14)
+
+v1 ships without MCP. When added, the core starts sluice once per upstream server and shares that one connection with every session (requirements.md A2); sluice limits calls to the server and retries when rate-limited. The rules below apply then.
+
 
 - Configured in `~/Maestro/.agents/mcp.json` (Claude Desktop `mcpServers` format, which pi reads), plus Maestro's `maestro.effects` per server (permissions.md §2).
 - A bot uses only the servers its file lists in `maestro.mcp`.

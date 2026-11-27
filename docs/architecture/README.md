@@ -63,13 +63,9 @@ Each line is settled. A change needs a new line, not an edit.
 | D12 | 2026-11-27 | Types are defined once in TypeBox in the core; JSON Schema is generated from them; Swift `Codable` types are generated from the schema | One source for wire types, checked at the trust boundary | protocol.md |
 | D13 | 2026-11-27 | dusk.bot code is read, never copied (PolyForm Noncommercial) | License | — |
 
+| D14 | 2026-11-28 | v1 has no MCP servers. Notion and other tools come later through sluice (Udit's code-mode gateway), started once by the core and shared by all bots | Maestro must work soon; mail and calendar need no MCP | connectors.md §5 |
+| D15 | 2026-11-28 | Former open questions take their defaults: iMessage uses the owner's self-chat, a new episode starts after a 2-hour gap, Node 24 is bundled in the app | Design frozen so building can start | channels.md, system.md |
+
 ## Open questions
 
-Each has an owner and a default. Build uses the default until it is answered.
-
-| # | Question | Default | Blocks |
-|---|---|---|---|
-| Q2 | iMessage: the owner's self-chat, or a second Apple ID for the bot (which takes over the Mac's Messages)? | Self-chat | channels.md §3 |
-| Q3 | Episode gap for iMessage | 2 hours | channels.md §4 |
-| Q4 | Bundle Node in the app, or require Node on the system? | Bundle Node 24 | system.md §5 |
-</content>
+None. A4 and A5 (requirements.md §6) are checked when the iMessage step is built.
