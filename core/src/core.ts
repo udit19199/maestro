@@ -2,11 +2,14 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   createAgentSession,
+  createCodemodeExtension,
+  createMcpExtension,
   DefaultResourceLoader,
   SessionManager,
   SettingsManager,
   type AgentSession,
   type ModelRuntime,
+  type McpServerConfig,
 } from "@earendil-works/pi-coding-agent";
 import type { Model } from "@earendil-works/pi-ai/compat";
 import type { Bot } from "./bots.ts";
@@ -27,6 +30,14 @@ export type ToolCallMetrics = {
   isError?: boolean;
 };
 
+export type TurnUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  ms: number;
+};
+
 export type RunMetrics = {
   bot: string;
   threadId: string;
@@ -35,10 +46,14 @@ export type RunMetrics = {
   modelMs: number;
   turns: number;
   usage: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  turnUsage: TurnUsage[];
   tools: ToolCallMetrics[];
   prompt: string;
   finalText?: string;
   error?: string;
+  // Bytes of tool declarations (JSON of name+description+parameters) sent with
+  // the session's first request. Set on the first run of the session.
+  declBytes?: number;
 };
 
 export const HOP_LIMIT = 8;
@@ -51,6 +66,7 @@ type BotThreadState = {
   sessionPromise?: Promise<AgentSession>;
   currentRun?: RunMetrics;
   toolOrder: Map<string, ToolCallMetrics>;
+  declBytes?: number;
 };
 
 type ThreadState = {
@@ -68,6 +84,10 @@ export type CoreOptions = {
   model: Model<any>;
   bots: Bot[];
   runDir: string;
+  mcpServers?: Record<string, McpServerConfig>;
+  mcpExposure?: "direct" | "codemode";
+  // server -> tool names exposed; every other tool of that server stays hidden.
+  mcpAllow?: Record<string, string[]>;
 };
 
 export class Core {
@@ -77,6 +97,9 @@ export class Core {
   readonly runDir: string;
   readonly threads = new Map<string, ThreadState>();
   readonly runs: RunMetrics[] = [];
+  readonly mcpServers: Record<string, McpServerConfig>;
+  readonly mcpExposure: "direct" | "codemode";
+  readonly mcpAllow: Record<string, string[]>;
   private draftCount = 0;
   private readonly draftsPath: string;
 
@@ -85,6 +108,9 @@ export class Core {
     this.model = opts.model;
     this.bots = new Map(opts.bots.map((b) => [b.id, b]));
     this.runDir = opts.runDir;
+    this.mcpServers = opts.mcpServers ?? {};
+    this.mcpExposure = opts.mcpExposure ?? "direct";
+    this.mcpAllow = opts.mcpAllow ?? {};
     this.draftsPath = join(opts.runDir, "drafts.jsonl");
     mkdirSync(opts.runDir, { recursive: true });
   }
@@ -192,6 +218,7 @@ export class Core {
       modelMs: 0,
       turns: 0,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      turnUsage: [],
       tools: [],
       prompt,
     };
@@ -204,6 +231,10 @@ export class Core {
       run.error = err instanceof Error ? err.message : String(err);
     }
     run.endMs = Date.now();
+    if (st.declBytes === undefined) {
+      st.declBytes = declarationBytes(session);
+      run.declBytes = st.declBytes;
+    }
     const last = session.messages.findLast((m) => m.role === "assistant");
     if (last && last.role === "assistant") {
       if (last.stopReason === "error") run.error = last.errorMessage ?? "model error";
@@ -240,10 +271,36 @@ export class Core {
         (e as { systemPromptOptions: { customPrompt: string } }).systemPromptOptions.customPrompt =
           bot.instructions;
       });
+    const factories: unknown[] = [ext];
+
+    // MCP servers for this bot. Server exposure stays "hidden" and the allow-listed
+    // tools override it with the bench's exposure, so everything else is unreachable.
+    if (bot.mcp.length > 0) {
+      const servers = bot.mcp.map((name) => {
+        const config = this.mcpServers[name];
+        if (!config) throw new Error(`bot ${botId}: unknown MCP server "${name}"`);
+        const allowed = this.mcpAllow[name] ?? [];
+        const toolExposure = Object.fromEntries(allowed.map((tool) => [tool, this.mcpExposure]));
+        return {
+          name,
+          config: { ...config, exposure: "hidden" as const, toolExposure },
+          source: "maestro-core",
+          scope: "extension" as const,
+        };
+      });
+      factories.push(
+        createMcpExtension({
+          loadConfig: () => ({ servers, errors: [], autoEnableCodemode: this.mcpExposure === "codemode" }),
+          logPath: join(this.runDir, "mcp.log"),
+        }),
+      );
+      if (this.mcpExposure === "codemode") factories.push(createCodemodeExtension());
+    }
+
     const resourceLoader = new DefaultResourceLoader({
       cwd,
       agentDir,
-      extensionFactories: [ext as never],
+      extensionFactories: factories as never[],
       noSkills: true,
       noContextFiles: true,
       noPromptTemplates: true,
@@ -271,6 +328,13 @@ export class Core {
     };
     const customTools = createTools(bot.tools, host);
 
+    // Built-in tools pi activates by default; a bot keeps the ones it lists.
+    const BUILT_INS = ["read", "bash", "edit", "write", "ls", "grep", "find", "powershell"];
+    const toolSelection = bot.mcp.length > 0
+      // An empty allowlist disables MCP tools too, so MCP bots use a denylist instead.
+      ? { excludeTools: BUILT_INS.filter((name) => !bot.tools.includes(name)) }
+      : { tools: bot.tools };
+
     const { session } = await createAgentSession({
       cwd,
       agentDir,
@@ -278,7 +342,7 @@ export class Core {
       thinkingLevel: "off",
       modelRuntime: this.runtime,
       resourceLoader,
-      tools: bot.tools,
+      ...toolSelection,
       customTools,
       sessionManager: SessionManager.inMemory(cwd),
       settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
@@ -307,6 +371,13 @@ export class Core {
           run.usage.output += msg.usage.output;
           run.usage.cacheRead += msg.usage.cacheRead;
           run.usage.cacheWrite += msg.usage.cacheWrite;
+          run.turnUsage.push({
+            input: msg.usage.input,
+            output: msg.usage.output,
+            cacheRead: msg.usage.cacheRead,
+            cacheWrite: msg.usage.cacheWrite,
+            ms: msg.durationMs ?? 0,
+          });
         }
       }
     });
@@ -327,4 +398,23 @@ export class Core {
       }
     }
   }
+}
+
+// Sum of the JSON sizes of the tool declarations (name+description+parameters)
+// carried by the first system message that declares tools.
+function declarationBytes(session: AgentSession): number {
+  for (const m of session.messages) {
+    if (m.role === "system" && m.toolsAdded) {
+      let bytes = 0;
+      for (const tool of m.toolsAdded) {
+        bytes += Buffer.byteLength(JSON.stringify({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        }));
+      }
+      return bytes;
+    }
+  }
+  return 0;
 }
