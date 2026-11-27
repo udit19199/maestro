@@ -40,6 +40,12 @@ It is open source. Each user installs the app and runs their own instance.
 
 ## 5. Quality targets
 
+These are the product's edge (decided 28 Nov 2026): the least memory, the fastest replies and the tightest security of any bot app. Every PR that touches the core or the shell reports its effect on the memory and speed rows below; a PR that makes one worse needs a reason.
+
+- **Memory:** one core process for all bots, never one process per chat. Today's app starts one pi process per chat, each about 100 MB (pi loaded in Node measured 96 MB RSS, A1), so 20 chats cost about 2 GB; in one process the same 20 cost 182 MB.
+- **Speed:** the model's wait is most of the time, so the core cuts what it sends: prompt cache hits on every turn (A3, needs Relay session affinity), warm sessions, and many tool calls in one script instead of one model turn each (sluice measured 34-42% faster on multi-step tasks).
+- **Security:** no open port, secrets only in Keychain, bot scripts confined with no file, network or environment access.
+
 Measured on an M-series Mac with 24 GB. The design file for the shell (`docs/DESIGN.md` §7) owns UI frame targets; these are the core's.
 
 | What | Target |
@@ -48,7 +54,9 @@ Measured on an M-series Mac with 24 GB. The design file for the shell (`docs/DES
 | Core start to `hello` answered with a full snapshot | under 400 ms with 500 threads |
 | Send to first `run.text` event, model time excluded | under 50 ms for a warm session, under 120 ms for a cold one |
 | Text batching | at most one `run.text` per run per 33 ms |
-| Core memory, idle, 20 live sessions, no MCP | under 400 MB RSS |
+| Core memory, 20 sessions after 200 messages each, no MCP | under 250 MB RSS (spike: 182 MB) |
+| Shell memory, window open, 500 threads | under 80 MB RSS |
+| Prompt cache | at least 90% of input tokens read from cache from the second turn of a thread |
 | Opening a thread with 2,000 messages | first page of 50 in under 30 ms |
 | Crash to recovered core | under 2 s, no user action |
 | Data loss on crash | none for committed state; at most the text of a run in progress |
