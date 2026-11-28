@@ -233,9 +233,6 @@ export class Core {
       run.error = err instanceof Error ? err.message : String(err);
     }
     run.endMs = Date.now();
-    // Transcript scan only as a fallback when no provider request was observed;
-    // in codemode "only" mode it overcounts because hidden declarations stay in the transcript.
-    if (st.declBytes === undefined) st.declBytes = declarationBytes(session);
     run.declBytes = st.declBytes;
     run.declTools = st.declSnapshot?.map((t) => t.name ?? "?");
     const last = session.messages.findLast((m) => m.role === "assistant");
@@ -278,19 +275,17 @@ export class Core {
         if (st.declBytes !== undefined) return;
         const payload = (e as { payload?: { tools?: unknown[] } }).payload;
         if (!payload?.tools) return;
-        let bytes = 0;
-        const snapshot: { name?: string; description?: string }[] = [];
-        for (const raw of payload.tools) {
-          const tool = raw as { name?: string; description?: string; input_schema?: unknown; parameters?: unknown };
-          bytes += Buffer.byteLength(JSON.stringify({
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.input_schema ?? tool.parameters,
-          }));
-          snapshot.push({ name: tool.name, description: tool.description });
-        }
-        st.declBytes = bytes;
-        st.declSnapshot = snapshot;
+        // Byte count is over the raw tool array so it is exact for any provider
+        // shape (Anthropic name/input_schema, OpenAI function wrappers, ...).
+        st.declBytes = Buffer.byteLength(JSON.stringify(payload.tools));
+        st.declSnapshot = payload.tools.map((raw) => {
+          const tool = raw as {
+            name?: string;
+            description?: string;
+            function?: { name?: string; description?: string };
+          };
+          return { name: tool.name ?? tool.function?.name, description: tool.description ?? tool.function?.description };
+        });
       });
     };
     const factories: unknown[] = [ext];
@@ -438,21 +433,3 @@ export class Core {
   }
 }
 
-// Sum of the JSON sizes of the tool declarations (name+description+parameters)
-// carried by the first system message that declares tools.
-function declarationBytes(session: AgentSession): number {
-  for (const m of session.messages) {
-    if (m.role === "system" && m.toolsAdded) {
-      let bytes = 0;
-      for (const tool of m.toolsAdded) {
-        bytes += Buffer.byteLength(JSON.stringify({
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.parameters,
-        }));
-      }
-      return bytes;
-    }
-  }
-  return 0;
-}
