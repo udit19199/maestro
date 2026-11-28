@@ -291,7 +291,26 @@ export class Core {
     const agentDir = join(this.runDir, "agent");
     mkdirSync(agentDir, { recursive: true });
 
+    const sessionHolder: { session?: AgentSession } = {};
     const ext = (pi: { on: (event: string, handler: (e: unknown) => void) => void }) => {
+      // Writes in order, reads in parallel: an MCP tool the server does not mark
+      // read-only (annotations.readOnlyHint !== true) executes one at a time, so
+      // concurrent writes cannot race. Runs at turn_start because MCP tools register
+      // only once before_agent_start has connected the servers, and must be in place
+      // before the first batch decision (one sequential call makes the whole batch
+      // run in order). pi-mcp copies the annotations onto the registered definition
+      // but never sets executionMode, and the agent-state wrappers are the same
+      // object references the execution loop inspects, so mutating them sticks.
+      pi.on("turn_start", () => {
+        const session = sessionHolder.session;
+        if (!session) return;
+        for (const tool of session.agent.state.tools) {
+          const t = tool as { name: string; executionMode?: "sequential" | "parallel" };
+          if (!t.name.startsWith("mcp__") || t.executionMode !== undefined) continue;
+          const annotations = (session.getToolDefinition(t.name) as { annotations?: { readOnlyHint?: boolean } } | undefined)?.annotations;
+          if (annotations?.readOnlyHint !== true) t.executionMode = "sequential";
+        }
+      });
       pi.on("before_agent_start", (e) => {
         const others = [...this.bots.values()].filter((b) => b.id !== botId);
         let instructions = bot.instructions;
@@ -420,6 +439,7 @@ export class Core {
       sessionManager: SessionManager.inMemory(cwd),
       settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
     });
+    sessionHolder.session = session;
     await session.bindExtensions({});
     // codemode registers defaultActive: false; nothing else activates it once MCP
     // tools are direct, so activate it explicitly.

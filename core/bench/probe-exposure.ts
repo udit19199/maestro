@@ -104,6 +104,16 @@ for (const mode of ["direct", "codemode", "hybrid"] as const) {
   }
   const codemodeDesc = decl.find((t) => t.name === "codemode")?.description ?? "";
   console.log(`\n== mode ${mode}`);
+  if (mode === "direct") {
+    const session = core.threads.get("t1")?.bots.get("jinbei")?.session;
+    const stateTools = (session as unknown as { agent?: { state?: { tools?: { name: string; annotations?: { readOnlyHint?: boolean }; executionMode?: string }[] } } })?.agent?.state?.tools ?? [];
+    console.log("execution modes:");
+    const getDef = (name: string) => (session as unknown as { getToolDefinition?: (n: string) => { annotations?: { readOnlyHint?: boolean } } | undefined })?.getToolDefinition?.(name);
+    for (const tool of stateTools.filter((t) => t.name.startsWith("mcp__"))) {
+      const hint = getDef(tool.name)?.annotations?.readOnlyHint ?? "unset";
+      console.log(`  ${tool.name}: ${tool.executionMode ?? "parallel(default)"} (readOnlyHint: ${hint})`);
+    }
+  }
   console.log("declared tools:", decl.map((t) => t.name).join(", ") || "(none)");
   console.log("declaration bytes:", bytes);
   console.log("core declBytes (payload capture or fallback):", core.runs[0]?.declBytes);
