@@ -88,6 +88,11 @@ type ThreadState = {
   bots: Map<string, BotThreadState>;
 };
 
+export type CoreEvent =
+  | { kind: "delta"; bot: string; text: string }
+  | { kind: "tool"; bot: string; name: string; ms?: number; isError?: boolean }
+  | { kind: "message"; author: string; text: string };
+
 export type CoreOptions = {
   runtime: ModelRuntime;
   model: Model<any>;
@@ -95,6 +100,7 @@ export type CoreOptions = {
   runDir: string;
   mcpServers?: Record<string, McpServerConfig>;
   mcpExposure?: "direct" | "codemode" | "hybrid";
+  onEvent?: (e: CoreEvent) => void;
 };
 
 export class Core {
@@ -108,8 +114,10 @@ export class Core {
   readonly mcpExposure: "direct" | "codemode" | "hybrid";
   private draftCount = 0;
   private readonly draftsPath: string;
+  private readonly opts: CoreOptions;
 
   constructor(opts: CoreOptions) {
+    this.opts = opts;
     this.runtime = opts.runtime;
     this.model = opts.model;
     this.bots = new Map(opts.bots.map((b) => [b.id, b]));
@@ -139,6 +147,7 @@ export class Core {
     const t = this.thread(threadId);
     const msg: ThreadMessage = { seq: ++t.lastSeq, author, text, at: Date.now() };
     t.messages.push(msg);
+    this.opts.onEvent?.({ kind: "message", author, text });
     let targets: string[];
     if (opts.wake) {
       targets = opts.wake;
@@ -421,7 +430,12 @@ export class Core {
     session.subscribe((ev) => {
       const run = st.currentRun;
       if (!run) return;
-      if (ev.type === "tool_execution_start") {
+      if (ev.type === "message_update") {
+        const streamEv = (ev as { assistantMessageEvent?: { type: string; delta?: string } }).assistantMessageEvent;
+        if (streamEv?.type === "text_delta" && streamEv.delta) {
+          this.opts.onEvent?.({ kind: "delta", bot: botId, text: streamEv.delta });
+        }
+      } else if (ev.type === "tool_execution_start") {
         const rec: ToolCallMetrics = { name: ev.toolName, args: ev.args, at: Date.now() };
         st.toolOrder.set(ev.toolCallId, rec);
         run.tools.push(rec);
@@ -444,6 +458,7 @@ export class Core {
           } else {
             st.consecutiveErrors = 0;
           }
+          this.opts.onEvent?.({ kind: "tool", bot: botId, name: ev.toolName, ms: ev.durationMs, isError: ev.isError });
         }
       } else if (ev.type === "turn_end") {
         const msg = ev.message;
