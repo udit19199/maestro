@@ -156,6 +156,73 @@ check("plain reply: beta never ran", coreC.runs.filter((r) => r.bot === "beta").
 check("plain reply: no hops", coreC.threads.get("t")?.hops === 0, `hops: ${coreC.threads.get("t")?.hops}`);
 coreC.dispose();
 
+// ---- Repeat-failure guard scenarios. ----
+// (d) an exact failing call repeated is blocked without executing again.
+const dirD = mkdtempSync(join(tmpdir(), "maestro-faux-d-"));
+{
+  const fauxD = fauxProvider({ provider: "faux", models: [{ id: "m", contextWindow: 10_000_000 }], tokensPerSecond: 1e9 });
+  const runtimeD = await ModelRuntime.create({ modelsPath: null, authPath: join(dirD, "auth.json"), allowModelNetwork: false });
+  runtimeD.registerNativeProvider(fauxD.provider);
+  await runtimeD.setRuntimeApiKey("faux", "k");
+  const modelD = runtimeD.getModel("faux", "m");
+  if (!modelD) throw new Error("faux model missing");
+  const FAILARGS = { to: "ghost", text: "hello" };
+  function stepD(ctx: { messages: CtxMessage[] }) {
+    const results = ctx.messages.filter((m) => m.role === "toolResult").length;
+    if (results === 0) return fauxAssistantMessage([fauxToolCall("message_bot", FAILARGS)], { stopReason: "toolUse" });
+    if (results === 1) return fauxAssistantMessage([fauxToolCall("message_bot", FAILARGS)], { stopReason: "toolUse" });
+    return fauxAssistantMessage(fauxText("done"));
+  }
+  fauxD.appendResponses(Array.from({ length: 20 }, () => stepD));
+  const coreD = new Core({
+    runtime: runtimeD, model: modelD, runDir: dirD,
+    bots: [
+      { id: "caller", description: "c", tools: ["message_bot"], mcp: {}, instructions: "You are caller." },
+      { id: "target", description: "t", tools: [], mcp: {}, instructions: "You are target." },
+    ],
+  });
+  coreD.post("t", "user", "@caller go");
+  await coreD.idle("t");
+  const calls = coreD.runs.flatMap((r) => r.tools).filter((tc) => tc.name === "message_bot");
+  const executed = calls.filter((tc) => tc.ms !== undefined);
+  const blocked = calls.filter((tc) => tc.ms === undefined);
+  check("guard: two calls recorded", calls.length === 2, `calls: ${calls.length}`);
+  check("guard: only the first executed", executed.length === 1 && blocked.length === 1, `executed: ${executed.length} blocked: ${blocked.length}`);
+  check("guard: blocked error text", (blocked[0]?.error ?? "").includes("This exact call already failed"), (blocked[0]?.error ?? "").slice(0, 80));
+  coreD.dispose();
+}
+
+// (e) six failures in a row abort the run with the guard error.
+const dirE = mkdtempSync(join(tmpdir(), "maestro-faux-e-"));
+{
+  const fauxE = fauxProvider({ provider: "faux", models: [{ id: "m", contextWindow: 10_000_000 }], tokensPerSecond: 1e9 });
+  const runtimeE = await ModelRuntime.create({ modelsPath: null, authPath: join(dirE, "auth.json"), allowModelNetwork: false });
+  runtimeE.registerNativeProvider(fauxE.provider);
+  await runtimeE.setRuntimeApiKey("faux", "k");
+  const modelE = runtimeE.getModel("faux", "m");
+  if (!modelE) throw new Error("faux model missing");
+  function stepE(ctx: { messages: CtxMessage[] }) {
+    const results = ctx.messages.filter((m) => m.role === "toolResult").length;
+    // Unique args each time so the repeat-block does not fire first.
+    return fauxAssistantMessage([fauxToolCall("message_bot", { to: "ghost", text: `attempt ${results}` })], { stopReason: "toolUse" });
+  }
+  fauxE.appendResponses(Array.from({ length: 30 }, () => stepE));
+  const coreE = new Core({
+    runtime: runtimeE, model: modelE, runDir: dirE,
+    bots: [
+      { id: "caller", description: "c", tools: ["message_bot"], mcp: {}, instructions: "You are caller." },
+      { id: "target", description: "t", tools: [], mcp: {}, instructions: "You are target." },
+    ],
+  });
+  coreE.post("t", "user", "@caller go");
+  await coreE.idle("t");
+  const runE = coreE.runs.find((r) => r.bot === "caller");
+  check("guard: run aborted after 6 consecutive failures", runE?.error === "stopped after 6 failed tool calls in a row", `error: ${runE?.error}`);
+  const errCount = (runE?.tools ?? []).filter((tc) => tc.isError).length;
+  check("guard: exactly 6 failures recorded", errCount === 6, `errors: ${errCount}`);
+  coreE.dispose();
+}
+
 console.log(`hop limit constant: ${HOP_LIMIT}; wall ${Date.now() - t0}ms; run dir ${dir}`);
 if (failures.length) {
   console.error(`FAILURES: ${failures.join(", ")}`);

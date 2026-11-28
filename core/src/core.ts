@@ -71,6 +71,11 @@ type BotThreadState = {
   toolOrder: Map<string, ToolCallMetrics>;
   declBytes?: number;
   declSnapshot?: { name?: string; description?: string }[];
+  // Repeat-failure guard, reset per run: exact (name, args) failures seen in this
+  // run, the count of consecutive tool errors, and whether the guard aborted.
+  failedSigs: Map<string, string>;
+  consecutiveErrors: number;
+  guardAbort: boolean;
 };
 
 type ThreadState = {
@@ -160,7 +165,7 @@ export class Core {
   private botState(t: ThreadState, botId: string): BotThreadState {
     let st = t.bots.get(botId);
     if (!st) {
-      st = { seenSeq: 0, phase: "idle", pendingWake: false, toolOrder: new Map() };
+      st = { seenSeq: 0, phase: "idle", pendingWake: false, toolOrder: new Map(), failedSigs: new Map(), consecutiveErrors: 0, guardAbort: false };
       t.bots.set(botId, st);
     }
     return st;
@@ -234,6 +239,9 @@ export class Core {
     this.runs.push(run);
     st.currentRun = run;
     st.toolOrder = new Map();
+    st.failedSigs = new Map();
+    st.consecutiveErrors = 0;
+    st.guardAbort = false;
     try {
       await session.prompt(prompt);
     } catch (err) {
@@ -255,6 +263,7 @@ export class Core {
         this.post(t.id, botId, text);
       }
     }
+    if (st.guardAbort) run.error = "stopped after 6 failed tool calls in a row";
   }
 
   private async getSession(t: ThreadState, st: BotThreadState, botId: string): Promise<AgentSession> {
@@ -285,6 +294,18 @@ export class Core {
         }
         (e as { systemPromptOptions: { customPrompt: string } }).systemPromptOptions.customPrompt =
           instructions;
+      });
+      // Repeat-failure guard: an exact (name, args) call that already failed in this
+      // run never executes again. pi routes every call — including nested ones a tool
+      // makes through ctx.executeTool, e.g. codemode scripts — through this hook.
+      pi.on("tool_call", (e) => {
+        const ev = e as { toolName: string; input: unknown };
+        const sig = `${ev.toolName}:${JSON.stringify(ev.input)}`;
+        const firstError = st.failedSigs.get(sig);
+        if (firstError !== undefined) {
+          return { block: true, reason: `This exact call already failed: ${firstError.slice(0, 300)}. Change the arguments or stop.` };
+        }
+        return undefined;
       });
       pi.on("before_provider_request", (e) => {
         if (st.declBytes !== undefined) return;
@@ -413,6 +434,15 @@ export class Core {
             const content = (ev.result as { content?: { type: string; text?: string }[] } | undefined)?.content;
             const text = (content ?? []).map((c) => (typeof c?.text === "string" ? c.text : "")).join("\n");
             if (text) rec.error = text.slice(0, 500);
+            const sig = `${rec.name}:${JSON.stringify(rec.args)}`;
+            if (!st.failedSigs.has(sig)) st.failedSigs.set(sig, (text || "unknown error").slice(0, 500));
+            st.consecutiveErrors++;
+            if (st.consecutiveErrors >= 6 && !st.guardAbort) {
+              st.guardAbort = true;
+              void session.abort();
+            }
+          } else {
+            st.consecutiveErrors = 0;
           }
         }
       } else if (ev.type === "turn_end") {
