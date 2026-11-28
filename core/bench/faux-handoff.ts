@@ -55,8 +55,8 @@ function step(ctx: { messages: CtxMessage[] }) {
 faux.appendResponses(Array.from({ length: 50 }, () => step));
 
 const bots: Bot[] = [
-  { id: "nami", description: "finder", tools: ["message_bot"], mcp: [], instructions: "You are Nami. Hand off to Robin." },
-  { id: "robin", description: "drafter", tools: ["save_draft"], mcp: [], instructions: "You are Robin. Save drafts." },
+  { id: "nami", description: "finder", tools: ["message_bot"], mcp: {}, instructions: "You are Nami. Hand off to Robin." },
+  { id: "robin", description: "drafter", tools: ["save_draft"], mcp: {}, instructions: "You are Robin. Save drafts." },
 ];
 const core = new Core({ runtime, model, bots, runDir: dir });
 
@@ -118,8 +118,8 @@ async function mentionCore(dirX: string, replyStyle: "mention" | "plain") {
   }
   fauxX.appendResponses(Array.from({ length: 20 }, () => stepX));
   const botsX: Bot[] = [
-    { id: "alpha", description: "starter", tools: [], mcp: [], instructions: "You are alpha." },
-    { id: "beta", description: "worker", tools: [], mcp: [], instructions: "You are beta." },
+    { id: "alpha", description: "starter", tools: [], mcp: {}, instructions: "You are alpha." },
+    { id: "beta", description: "worker", tools: [], mcp: {}, instructions: "You are beta." },
   ];
   return new Core({ runtime: runtimeX, model: modelX, bots: botsX, runDir: dirX });
 }

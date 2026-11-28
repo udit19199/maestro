@@ -9,23 +9,6 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { Core, type RunMetrics } from "../src/core.ts";
 import { loadBot } from "../src/bots.ts";
 
-const ALLOWED_EXCALIDRAW_TOOLS = [
-  "list_collections",
-  "list_collection_scenes",
-  "create_collection_scene",
-  "create_scene",
-  "get_scene",
-  "get_scene_content",
-  "edit_scene_content",
-  "read_diagram_format",
-  "create_diagram",
-  "create_mermaid_diagram",
-  "create_table",
-  "create_sticky_notes",
-  "check_scene_layout",
-  "take_screenshot",
-];
-
 function argValue(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
@@ -74,7 +57,6 @@ const core = new Core({
     },
   },
   mcpExposure: mode,
-  mcpAllow: { excalidraw: ALLOWED_EXCALIDRAW_TOOLS },
 });
 
 let peakRss = process.memoryUsage().rss;

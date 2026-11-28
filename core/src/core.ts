@@ -90,8 +90,6 @@ export type CoreOptions = {
   runDir: string;
   mcpServers?: Record<string, McpServerConfig>;
   mcpExposure?: "direct" | "codemode" | "hybrid";
-  // server -> tool names exposed; every other tool of that server stays hidden.
-  mcpAllow?: Record<string, string[]>;
 };
 
 export class Core {
@@ -103,7 +101,6 @@ export class Core {
   readonly runs: RunMetrics[] = [];
   readonly mcpServers: Record<string, McpServerConfig>;
   readonly mcpExposure: "direct" | "codemode" | "hybrid";
-  readonly mcpAllow: Record<string, string[]>;
   private draftCount = 0;
   private readonly draftsPath: string;
 
@@ -114,7 +111,6 @@ export class Core {
     this.runDir = opts.runDir;
     this.mcpServers = opts.mcpServers ?? {};
     this.mcpExposure = opts.mcpExposure ?? "direct";
-    this.mcpAllow = opts.mcpAllow ?? {};
     this.draftsPath = join(opts.runDir, "drafts.jsonl");
     mkdirSync(opts.runDir, { recursive: true });
   }
@@ -315,12 +311,12 @@ export class Core {
     // model sees them: "only" hides the direct declarations and inlines every callable
     // tool's full declaration into the codemode description, "on" keeps the direct
     // declarations and adds a script-call line to each.
-    if (bot.mcp.length > 0) {
-      const servers = bot.mcp.map((name) => {
+    const mcpServerNames = Object.keys(bot.mcp);
+    if (mcpServerNames.length > 0) {
+      const servers = mcpServerNames.map((name) => {
         const config = this.mcpServers[name];
         if (!config) throw new Error(`bot ${botId}: unknown MCP server "${name}"`);
-        const allowed = this.mcpAllow[name] ?? [];
-        const toolExposure = Object.fromEntries(allowed.map((tool) => [tool, "direct" as const]));
+        const toolExposure = Object.fromEntries((bot.mcp[name] ?? []).map((tool) => [tool, "direct" as const]));
         return {
           name,
           config: { ...config, exposure: "hidden" as const, toolExposure },
@@ -377,7 +373,7 @@ export class Core {
 
     // Built-in tools pi activates by default; a bot keeps the ones it lists.
     const BUILT_INS = ["read", "bash", "edit", "write", "ls", "grep", "find", "powershell"];
-    const toolSelection = bot.mcp.length > 0
+    const toolSelection = mcpServerNames.length > 0
       // An empty allowlist disables MCP tools too, so MCP bots use a denylist instead.
       ? { excludeTools: BUILT_INS.filter((name) => !bot.tools.includes(name)) }
       : { tools: bot.tools };
@@ -397,7 +393,7 @@ export class Core {
     await session.bindExtensions({});
     // codemode registers defaultActive: false; nothing else activates it once MCP
     // tools are direct, so activate it explicitly.
-    if (bot.mcp.length > 0 && this.mcpExposure !== "direct") {
+    if (mcpServerNames.length > 0 && this.mcpExposure !== "direct") {
       session.setActiveToolsByName([...session.getActiveToolNames(), "codemode"]);
     }
 

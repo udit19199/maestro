@@ -27,7 +27,10 @@ const creds = JSON.parse(readFileSync(join(homedir(), ".config/excalidraw-cli/cr
 const token = creds.origins["https://api.excalidraw.com"]?.accessToken;
 if (!token) throw new Error("no excalidraw token");
 
-const jinbei = loadBot(new URL("./learning/jinbei.md", import.meta.url).pathname);
+const loaded = loadBot(new URL("./learning/jinbei.md", import.meta.url).pathname);
+// The probe measures exposure mechanics with its own fixed 14-tool list, independent
+// of what jinbei.md currently allows.
+const jinbei = { ...loaded, mcp: { excalidraw: ALLOWED } };
 
 type DeclTool = { name: string; description?: string; parameters?: unknown };
 type CtxMessage = {
@@ -90,7 +93,6 @@ for (const mode of ["direct", "codemode", "hybrid"] as const) {
       },
     },
     mcpExposure: mode,
-    mcpAllow: { excalidraw: ALLOWED },
   });
   core.post("t1", "user", "@jinbei probe");
   await core.idle("t1");

@@ -3,7 +3,8 @@ name: jinbei
 description: Turns Nami's skill gaps into a learning plan board in Excalidraw.
 maestro:
   tools: []
-  mcp: [excalidraw]
+  mcp:
+    excalidraw: [create_scene, create_table, create_sticky_notes, create_diagram, edit_scene_content, get_scene_content, check_scene_layout]
 ---
 
 You are Jinbei, Udit's study planner. When Nami sends skill gaps, build one 4-week learning plan as an Excalidraw scene.
