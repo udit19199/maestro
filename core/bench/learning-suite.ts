@@ -12,6 +12,10 @@ function argValue(flag: string): string | undefined {
 }
 const rounds = Number(argValue("--rounds") ?? "5");
 const model = argValue("--model") ?? "relay/grok-4.20-0309-reasoning";
+const MODES = (argValue("--modes") ?? "direct,codemode,hybrid").split(",").map((m) => m.trim()).filter(Boolean);
+for (const m of MODES) {
+  if (!["direct", "codemode", "hybrid"].includes(m)) throw new Error(`bad mode in --modes: ${m}`);
+}
 
 const iso = new Date().toISOString().replace(/[:.]/g, "-");
 const suiteDir = join(homedir(), `Workspace/local/maestro/bench-2026-11-28/fair-${iso}`);
@@ -22,9 +26,9 @@ writeFileSync(
   `> Dude, setup a fair test man.
 model: relay/grok-4.20-0309-reasoning
 tasks: plan, board
-modes: direct, codemode, hybrid
-rounds: 5
-runs: 30
+modes: ${MODES.join(", ")}
+rounds: ${rounds}
+runs: ${rounds * 2 * MODES.length}
 input: fixed handoff fixture core/bench/learning/handoff.md
 `,
 );
@@ -45,9 +49,8 @@ function countResults(): number {
   }
 }
 
-const MODES = ["direct", "codemode", "hybrid"];
 const TASKS = ["plan", "board"];
-const total = rounds * 6;
+const total = rounds * TASKS.length * MODES.length;
 writeStatus("running", `0/${total}`, "none");
 
 const repoRoot = new URL("../..", import.meta.url).pathname;

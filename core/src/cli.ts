@@ -102,9 +102,7 @@ const core = new Core({
 console.log(`maestro cli — bots: ${bots.map((b) => b.id).join(", ")} — /quit to exit`);
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-let aborting = false;
 rl.on("SIGINT", () => {
-  aborting = true;
   const t = core.threads.get("main");
   for (const st of t?.bots.values() ?? []) void st.session?.abort();
   process.stdout.write("\n(aborted)\n");
@@ -137,12 +135,14 @@ async function loop(): Promise<void> {
     if (speaker !== null) process.stdout.write("\n");
     speaker = null;
     const newRuns = core.runs.slice(runsBefore);
+    for (const r of newRuns) {
+      if (r.error) process.stdout.write(`  ! ${r.bot}: ${r.error}\n`);
+    }
     const turns = newRuns.reduce((a, r) => a + r.turns, 0);
     const tokensRead = newRuns.reduce((a, r) => a + r.usage.input + r.usage.cacheRead + r.usage.cacheWrite, 0);
     const secs = ((Date.now() - start) / 1000).toFixed(1);
     const rss = Math.round(process.memoryUsage().rss / 1048576);
     process.stdout.write(`${DIM}  ${secs}s · ${turns} turns · ${fmtTokens(tokensRead)} tokens read · ${rss} MB${RESET}\n`);
-    aborting = false;
     if ((rl as { closed?: boolean }).closed) break;
     rl.prompt();
   }
