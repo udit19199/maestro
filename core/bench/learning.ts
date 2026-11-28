@@ -188,9 +188,10 @@ if (sceneLink) {
         params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "maestro-bench", version: "0" } },
       }),
     });
+    // The server is stateless in practice: no mcp-session-id header comes back and
+    // tools/call works without it. Use the header when present, proceed without otherwise.
     const sessionId = initRes.headers.get("mcp-session-id");
-    if (!sessionId) throw new Error("no mcp-session-id header");
-    const headers = { ...baseHeaders, "mcp-session-id": sessionId };
+    const headers = sessionId ? { ...baseHeaders, "mcp-session-id": sessionId } : baseHeaders;
     await fetch(MCP_URL, {
       method: "POST",
       headers,
@@ -218,7 +219,8 @@ if (sceneLink) {
     try {
       const scene = JSON.parse(sceneRes) as Record<string, unknown>;
       const data = (scene.data ?? scene) as Record<string, unknown>;
-      sceneName = (data.name ?? data.title) as string | undefined;
+      const meta = (data.metadata ?? {}) as Record<string, unknown>;
+      sceneName = (data.name ?? data.title ?? meta.name ?? meta.title) as string | undefined;
     } catch {
       throw new Error(`get_scene result is not JSON: ${sceneRes.slice(0, 200)}`);
     }
