@@ -186,6 +186,7 @@ const metrics = {
     usage: r.usage,
     turnUsage: r.turnUsage,
     declBytes: r.declBytes ?? null,
+    declTools: r.declTools ?? null,
     error: r.error ?? null,
   })),
   peakRssMB: +(peakRss / 1048576).toFixed(1),
