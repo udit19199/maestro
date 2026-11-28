@@ -101,6 +101,61 @@ const handoffMsgs = thread?.messages.filter((m) => m.text === HANDOFF_ONE || m.t
 check("hand-offs posted to thread by nami", handoffMsgs.length === 2 && handoffMsgs.every((m) => m.author === "nami"));
 
 core.dispose();
+
+// ---- Mention-by-reply scenarios: fresh runtime + core per scenario. ----
+async function mentionCore(dirX: string, replyStyle: "mention" | "plain") {
+  const fauxX = fauxProvider({ provider: "faux", models: [{ id: "m", contextWindow: 10_000_000 }], tokensPerSecond: 1e9 });
+  const runtimeX = await ModelRuntime.create({ modelsPath: null, authPath: join(dirX, "auth.json"), allowModelNetwork: false });
+  runtimeX.registerNativeProvider(fauxX.provider);
+  await runtimeX.setRuntimeApiKey("faux", "k");
+  const modelX = runtimeX.getModel("faux", "m");
+  if (!modelX) throw new Error("faux model missing");
+  function stepX(ctx: { messages: CtxMessage[] }) {
+    const sysMsg = ctx.messages.find((m) => m.role === "system");
+    const sys = Object.values(sysMsg?.sections ?? {}).join(" ");
+    if (sys.includes("You are beta")) return fauxAssistantMessage(fauxText("beta finished"));
+    return fauxAssistantMessage(fauxText(replyStyle === "mention" ? "@beta do x" : "no mention here"));
+  }
+  fauxX.appendResponses(Array.from({ length: 20 }, () => stepX));
+  const botsX: Bot[] = [
+    { id: "alpha", description: "starter", tools: [], mcp: [], instructions: "You are alpha." },
+    { id: "beta", description: "worker", tools: [], mcp: [], instructions: "You are beta." },
+  ];
+  return new Core({ runtime: runtimeX, model: modelX, bots: botsX, runDir: dirX });
+}
+
+// (a) alpha's final text "@beta do x" wakes beta with that text in its prompt.
+const dirA = mkdtempSync(join(tmpdir(), "maestro-faux-a-"));
+const coreA = await mentionCore(dirA, "mention");
+coreA.post("t", "user", "@alpha start");
+await coreA.idle("t");
+const alphaRuns = coreA.runs.filter((r) => r.bot === "alpha");
+const betaRuns = coreA.runs.filter((r) => r.bot === "beta");
+check("mention: beta ran exactly once", betaRuns.length === 1, `runs: ${betaRuns.length}`);
+check("mention: beta prompt carries alpha's reply", (betaRuns[0]?.prompt ?? "").includes("alpha: @beta do x"));
+check("mention: hop counted", coreA.threads.get("t")?.hops === 1, `hops: ${coreA.threads.get("t")?.hops}`);
+// (c) beta's final text has no mention, so alpha never re-runs.
+check("no mention: alpha ran exactly once", alphaRuns.length === 1, `runs: ${alphaRuns.length}`);
+coreA.dispose();
+
+// (b) at the hop limit a mention wakes nobody.
+const dirB = mkdtempSync(join(tmpdir(), "maestro-faux-b-"));
+const coreB = await mentionCore(dirB, "mention");
+coreB.thread("t").hops = HOP_LIMIT;
+coreB.post("t", "user", "@alpha start");
+await coreB.idle("t");
+check("hop limit: beta never ran", coreB.runs.filter((r) => r.bot === "beta").length === 0);
+coreB.dispose();
+
+// (c2) a final text without a mention wakes nobody even below the limit.
+const dirC = mkdtempSync(join(tmpdir(), "maestro-faux-c-"));
+const coreC = await mentionCore(dirC, "plain");
+coreC.post("t", "user", "@alpha start");
+await coreC.idle("t");
+check("plain reply: beta never ran", coreC.runs.filter((r) => r.bot === "beta").length === 0);
+check("plain reply: no hops", coreC.threads.get("t")?.hops === 0, `hops: ${coreC.threads.get("t")?.hops}`);
+coreC.dispose();
+
 console.log(`hop limit constant: ${HOP_LIMIT}; wall ${Date.now() - t0}ms; run dir ${dir}`);
 if (failures.length) {
   console.error(`FAILURES: ${failures.join(", ")}`);

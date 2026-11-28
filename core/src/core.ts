@@ -147,6 +147,15 @@ export class Core {
       targets = [...this.bots.keys()].filter(
         (id) => id !== author && new RegExp(`@${id}\\b`, "i").test(text),
       );
+      // Mentions in a bot's own messages are hand-offs and count against the hop
+      // limit; over it, nobody is woken. User mentions are free.
+      if (author !== "user" && targets.length > 0) {
+        if (t.hops >= HOP_LIMIT) {
+          targets = [];
+        } else {
+          t.hops += targets.length;
+        }
+      }
     }
     for (const id of targets) this.wake(t, id);
     return msg.seq;
@@ -247,7 +256,7 @@ export class Core {
         .trim();
       if (text && !run.error) {
         run.finalText = text;
-        this.post(t.id, botId, text, { noMentions: true });
+        this.post(t.id, botId, text);
       }
     }
   }
@@ -270,8 +279,16 @@ export class Core {
 
     const ext = (pi: { on: (event: string, handler: (e: unknown) => void) => void }) => {
       pi.on("before_agent_start", (e) => {
+        const others = [...this.bots.values()].filter((b) => b.id !== botId);
+        let instructions = bot.instructions;
+        if (others.length > 0) {
+          instructions +=
+            "\n\nOther bots in this conversation:\n" +
+            others.map((b) => `- ${b.id}: ${b.description}`).join("\n") +
+            "\nTo hand work to one, write @<id> in your final reply. They receive your whole reply. Only mention a bot when you want it to act.";
+        }
         (e as { systemPromptOptions: { customPrompt: string } }).systemPromptOptions.customPrompt =
-          bot.instructions;
+          instructions;
       });
       pi.on("before_provider_request", (e) => {
         if (st.declBytes !== undefined) return;
