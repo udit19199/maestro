@@ -170,7 +170,7 @@ const dirD = mkdtempSync(join(tmpdir(), "maestro-faux-d-"));
   function stepD(ctx: { messages: CtxMessage[] }) {
     const results = ctx.messages.filter((m) => m.role === "toolResult").length;
     if (results === 0) return fauxAssistantMessage([fauxToolCall("message_bot", FAILARGS)], { stopReason: "toolUse" });
-    if (results === 1) return fauxAssistantMessage([fauxToolCall("message_bot", FAILARGS)], { stopReason: "toolUse" });
+    if (results <= 2) return fauxAssistantMessage([fauxToolCall("message_bot", FAILARGS)], { stopReason: "toolUse" });
     return fauxAssistantMessage(fauxText("done"));
   }
   fauxD.appendResponses(Array.from({ length: 20 }, () => stepD));
@@ -186,8 +186,8 @@ const dirD = mkdtempSync(join(tmpdir(), "maestro-faux-d-"));
   const calls = coreD.runs.flatMap((r) => r.tools).filter((tc) => tc.name === "message_bot");
   const executed = calls.filter((tc) => tc.ms !== undefined);
   const blocked = calls.filter((tc) => tc.ms === undefined);
-  check("guard: two calls recorded", calls.length === 2, `calls: ${calls.length}`);
-  check("guard: only the first executed", executed.length === 1 && blocked.length === 1, `executed: ${executed.length} blocked: ${blocked.length}`);
+  check("guard: three calls recorded", calls.length === 3, `calls: ${calls.length}`);
+  check("guard: first two executed, third blocked", executed.length === 2 && blocked.length === 1, `executed: ${executed.length} blocked: ${blocked.length}`);
   check("guard: blocked error text", (blocked[0]?.error ?? "").includes("This exact call already failed"), (blocked[0]?.error ?? "").slice(0, 80));
   coreD.dispose();
 }

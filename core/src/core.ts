@@ -72,8 +72,9 @@ type BotThreadState = {
   declBytes?: number;
   declSnapshot?: { name?: string; description?: string }[];
   // Repeat-failure guard, reset per run: exact (name, args) failures seen in this
-  // run, the count of consecutive tool errors, and whether the guard aborted.
-  failedSigs: Map<string, string>;
+  // run with their counts, the count of consecutive tool errors, and whether the
+  // guard aborted.
+  failedSigs: Map<string, { error: string; count: number }>;
   consecutiveErrors: number;
   guardAbort: boolean;
 };
@@ -329,9 +330,10 @@ export class Core {
       pi.on("tool_call", (e) => {
         const ev = e as { toolName: string; input: unknown };
         const sig = `${ev.toolName}:${JSON.stringify(ev.input)}`;
-        const firstError = st.failedSigs.get(sig);
-        if (firstError !== undefined) {
-          return { block: true, reason: `This exact call already failed: ${firstError.slice(0, 300)}. Change the arguments or stop.` };
+        const seen = st.failedSigs.get(sig);
+        // One identical retry is allowed for transient errors; the third is blocked.
+        if (seen !== undefined && seen.count >= 2) {
+          return { block: true, reason: `This exact call already failed: ${seen.error.slice(0, 300)}. Change the arguments or stop.` };
         }
         return undefined;
       });
@@ -469,7 +471,12 @@ export class Core {
             const text = (content ?? []).map((c) => (typeof c?.text === "string" ? c.text : "")).join("\n");
             if (text) rec.error = text.slice(0, 500);
             const sig = `${rec.name}:${JSON.stringify(rec.args)}`;
-            if (!st.failedSigs.has(sig)) st.failedSigs.set(sig, (text || "unknown error").slice(0, 500));
+            const seen = st.failedSigs.get(sig);
+            if (seen) {
+              seen.count++;
+            } else {
+              st.failedSigs.set(sig, { error: (text || "unknown error").slice(0, 500), count: 1 });
+            }
             st.consecutiveErrors++;
             if (st.consecutiveErrors >= 6 && !st.guardAbort) {
               st.guardAbort = true;
