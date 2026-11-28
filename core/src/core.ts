@@ -72,10 +72,12 @@ type BotThreadState = {
   declBytes?: number;
   declSnapshot?: { name?: string; description?: string }[];
   // Repeat-failure guard, reset per run: exact (name, args) failures seen in this
-  // run with their counts, the count of consecutive tool errors, and whether the
-  // guard aborted.
+  // run with their counts, per-turn call/failure tallies for the consecutive-bad-
+  // turn count, and whether the guard aborted.
   failedSigs: Map<string, { error: string; count: number }>;
-  consecutiveErrors: number;
+  turnCalls: number;
+  turnFailures: number;
+  badTurns: number;
   guardAbort: boolean;
 };
 
@@ -175,7 +177,7 @@ export class Core {
   private botState(t: ThreadState, botId: string): BotThreadState {
     let st = t.bots.get(botId);
     if (!st) {
-      st = { seenSeq: 0, phase: "idle", pendingWake: false, toolOrder: new Map(), failedSigs: new Map(), consecutiveErrors: 0, guardAbort: false };
+      st = { seenSeq: 0, phase: "idle", pendingWake: false, toolOrder: new Map(), failedSigs: new Map(), turnCalls: 0, turnFailures: 0, badTurns: 0, guardAbort: false };
       t.bots.set(botId, st);
     }
     return st;
@@ -250,7 +252,9 @@ export class Core {
     st.currentRun = run;
     st.toolOrder = new Map();
     st.failedSigs = new Map();
-    st.consecutiveErrors = 0;
+    st.turnCalls = 0;
+    st.turnFailures = 0;
+    st.badTurns = 0;
     st.guardAbort = false;
     try {
       await session.prompt(prompt);
@@ -273,7 +277,7 @@ export class Core {
         this.post(t.id, botId, text);
       }
     }
-    if (st.guardAbort) run.error = "stopped after 6 failed tool calls in a row";
+    if (st.guardAbort) run.error = "stopped after 3 turns of only failed tool calls";
   }
 
   private async getSession(t: ThreadState, st: BotThreadState, botId: string): Promise<AgentSession> {
@@ -466,6 +470,7 @@ export class Core {
         if (rec) {
           rec.ms = ev.durationMs;
           rec.isError = ev.isError;
+          st.turnCalls++;
           if (ev.isError) {
             const content = (ev.result as { content?: { type: string; text?: string }[] } | undefined)?.content;
             const text = (content ?? []).map((c) => (typeof c?.text === "string" ? c.text : "")).join("\n");
@@ -477,17 +482,25 @@ export class Core {
             } else {
               st.failedSigs.set(sig, { error: (text || "unknown error").slice(0, 500), count: 1 });
             }
-            st.consecutiveErrors++;
-            if (st.consecutiveErrors >= 6 && !st.guardAbort) {
-              st.guardAbort = true;
-              void session.abort();
-            }
-          } else {
-            st.consecutiveErrors = 0;
+            st.turnFailures++;
           }
           this.opts.onEvent?.({ kind: "tool", bot: botId, name: ev.toolName, ms: ev.durationMs, isError: ev.isError });
         }
+      } else if (ev.type === "turn_start") {
+        st.turnCalls = 0;
+        st.turnFailures = 0;
       } else if (ev.type === "turn_end") {
+        // Guard, turn-based: a turn in which the bot called tools and every call
+        // failed (blocked repeats count) is a bad turn; anything else resets.
+        if (st.turnCalls > 0 && st.turnFailures === st.turnCalls) {
+          st.badTurns++;
+        } else {
+          st.badTurns = 0;
+        }
+        if (st.badTurns >= 3 && !st.guardAbort) {
+          st.guardAbort = true;
+          void session.abort();
+        }
         const msg = ev.message;
         if (msg.role === "assistant") {
           run.turns++;

@@ -192,7 +192,7 @@ const dirD = mkdtempSync(join(tmpdir(), "maestro-faux-d-"));
   coreD.dispose();
 }
 
-// (e) six failures in a row abort the run with the guard error.
+// (e) three turns of only failing calls abort the run with the guard error.
 const dirE = mkdtempSync(join(tmpdir(), "maestro-faux-e-"));
 {
   const fauxE = fauxProvider({ provider: "faux", models: [{ id: "m", contextWindow: 10_000_000 }], tokensPerSecond: 1e9 });
@@ -217,10 +217,48 @@ const dirE = mkdtempSync(join(tmpdir(), "maestro-faux-e-"));
   coreE.post("t", "user", "@caller go");
   await coreE.idle("t");
   const runE = coreE.runs.find((r) => r.bot === "caller");
-  check("guard: run aborted after 6 consecutive failures", runE?.error === "stopped after 6 failed tool calls in a row", `error: ${runE?.error}`);
+  check("guard: run aborted after 3 bad turns", runE?.error === "stopped after 3 turns of only failed tool calls", `error: ${runE?.error}`);
   const errCount = (runE?.tools ?? []).filter((tc) => tc.isError).length;
-  check("guard: exactly 6 failures recorded", errCount === 6, `errors: ${errCount}`);
+  check("guard: exactly 3 failures recorded (one per turn)", errCount === 3, `errors: ${errCount}`);
   coreE.dispose();
+}
+
+// (f) one turn with 6 failing calls followed by a successful turn completes normally.
+const dirF = mkdtempSync(join(tmpdir(), "maestro-faux-f-"));
+{
+  const fauxF = fauxProvider({ provider: "faux", models: [{ id: "m", contextWindow: 10_000_000 }], tokensPerSecond: 1e9 });
+  const runtimeF = await ModelRuntime.create({ modelsPath: null, authPath: join(dirF, "auth.json"), allowModelNetwork: false });
+  runtimeF.registerNativeProvider(fauxF.provider);
+  await runtimeF.setRuntimeApiKey("faux", "k");
+  const modelF = runtimeF.getModel("faux", "m");
+  if (!modelF) throw new Error("faux model missing");
+  function stepF(ctx: { messages: CtxMessage[] }) {
+    const results = ctx.messages.filter((m) => m.role === "toolResult").length;
+    if (results === 0) {
+      return fauxAssistantMessage(
+        Array.from({ length: 6 }, (_, i) => fauxToolCall("message_bot", { to: "ghost", text: `batch ${i}` })),
+        { stopReason: "toolUse" },
+      );
+    }
+    if (results === 6) {
+      return fauxAssistantMessage([fauxToolCall("message_bot", { to: "target", text: "real handoff" })], { stopReason: "toolUse" });
+    }
+    return fauxAssistantMessage(fauxText("done"));
+  }
+  fauxF.appendResponses(Array.from({ length: 30 }, () => stepF));
+  const coreF = new Core({
+    runtime: runtimeF, model: modelF, runDir: dirF,
+    bots: [
+      { id: "caller", description: "c", tools: ["message_bot"], mcp: {}, instructions: "You are caller." },
+      { id: "target", description: "t", tools: [], mcp: {}, instructions: "You are target." },
+    ],
+  });
+  coreF.post("t", "user", "@caller go");
+  await coreF.idle("t");
+  const runF = coreF.runs.find((r) => r.bot === "caller");
+  check("guard: 6 failures in one turn then success completes", runF?.error === undefined, `error: ${runF?.error}`);
+  check("guard: the one bad turn did not abort", (runF?.tools ?? []).filter((tc) => tc.isError).length === 6);
+  coreF.dispose();
 }
 
 console.log(`hop limit constant: ${HOP_LIMIT}; wall ${Date.now() - t0}ms; run dir ${dir}`);
