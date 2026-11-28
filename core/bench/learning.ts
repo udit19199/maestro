@@ -134,8 +134,10 @@ core.runs.forEach((r: RunMetrics, i) => {
   );
   for (const t of r.tools) {
     const args = JSON.stringify(t.args);
-    const cut = args.length > 500 ? `${args.slice(0, 500)}…` : args;
+    const limit = t.isError ? 4000 : 500;
+    const cut = args.length > limit ? `${args.slice(0, limit)}…` : args;
     lines.push(`- ${t.name}(${cut}) — ${t.ms ?? "?"}ms${t.isError ? " ERROR" : ""}`);
+    if (t.error) lines.push(`  error: ${t.error}`);
   }
   if (r.finalText) lines.push("", "Final text:", "", r.finalText);
   if (r.error) lines.push("", `ERROR: ${r.error}`);
@@ -283,7 +285,7 @@ const metrics = {
   wallMs,
   capped,
   jinbei: jinbeiMetrics(),
-  toolCalls: allTools.map((t) => ({ bot: core.runs.find((r) => r.tools.includes(t))?.bot ?? null, name: t.name, ms: t.ms ?? null, isError: t.isError ?? false })),
+  toolCalls: allTools.map((t) => ({ bot: core.runs.find((r) => r.tools.includes(t))?.bot ?? null, name: t.name, ms: t.ms ?? null, isError: t.isError ?? false, error: t.error ?? null })),
   errors: core.runs.filter((r) => r.error).map((r) => ({ bot: r.bot, error: r.error })),
   peakRssMB: +(peakRss / 1048576).toFixed(1),
   endRssMB: +(endRss / 1048576).toFixed(1),

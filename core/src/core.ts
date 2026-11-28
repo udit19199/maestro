@@ -28,6 +28,8 @@ export type ToolCallMetrics = {
   at: number;
   ms?: number;
   isError?: boolean;
+  // First 500 chars of the error result text, when the call failed.
+  error?: string;
 };
 
 export type TurnUsage = {
@@ -394,6 +396,11 @@ export class Core {
         if (rec) {
           rec.ms = ev.durationMs;
           rec.isError = ev.isError;
+          if (ev.isError) {
+            const content = (ev.result as { content?: { type: string; text?: string }[] } | undefined)?.content;
+            const text = (content ?? []).map((c) => (typeof c?.text === "string" ? c.text : "")).join("\n");
+            if (text) rec.error = text.slice(0, 500);
+          }
         }
       } else if (ev.type === "turn_end") {
         const msg = ev.message;
