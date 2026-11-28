@@ -43,7 +43,7 @@ It is open source. Each user installs the app and runs their own instance.
 These are the product's edge (decided 28 Nov 2026): the least memory, the fastest replies and the tightest security of any bot app. Every PR that touches the core or the shell reports its effect on the memory and speed rows below; a PR that makes one worse needs a reason.
 
 - **Memory:** one core process for all bots, never one process per chat. Today's app starts one pi process per chat, each about 100 MB (pi loaded in Node measured 96 MB RSS, A1), so 20 chats cost about 2 GB; in one process the same 20 cost 182 MB.
-- **Speed:** the model's wait is most of the time, so the core cuts what it sends: prompt cache hits on every turn (A3, needs Relay session affinity), warm sessions, and many tool calls in one script instead of one model turn each (sluice measured 34-42% faster on multi-step tasks).
+- **Speed:** the model's wait is most of the time, so the core cuts what it sends: prompt cache hits on every turn (A3, needs Relay session affinity), warm sessions, and the core rules in §7 that cut model turns and retries. Running tool calls from a model-written script (pi's code mode) is off by default: in the §7 test it gave no speed gain and cost 30-55 MB.
 - **Security:** no open port, secrets only in Keychain, bot scripts confined with no file, network or environment access.
 
 Measured on an M-series Mac with 24 GB. The design file for the shell (`docs/DESIGN.md` §7) owns UI frame targets; these are the core's.
@@ -75,3 +75,19 @@ Spikes run 28 Nov 2026 on pi 1.2.0, Node 26.13.1, scripts in `~/Workspace/local/
 | A4 | A child process started by `Maestro.app` is covered by the app's Full Disk Access and Automation grants (needed for iMessage) | Not run: needs a Full Disk Access grant |
 | A5 | `chat.db` records which message an iMessage reply answers (`thread_originator_guid`) | Not run: needs a reply from an iPhone |
 | A6 | `node:sqlite` handles WAL, FTS5 and one writer with readers | **Held** on Node 26 (SQLite 3.54.1): schema.sql loads, 10,000 FTS inserts in 643 ms while a reader thread ran 13,300 searches with 0 errors (max 5.5 ms); `contentless_delete` removes rows. Not rerun on Node 24 |
+
+## 7. Core rules that came out of testing
+
+Tested 28 Nov 2026 with two bots (Nami reads two job postings and hands the skill gaps to Jinbei; Jinbei builds a learning plan in Excalidraw over its MCP server), Grok through Relay, each board read back from Excalidraw and checked by a program. Code in `core/bench/`, results in `~/Workspace/local/maestro/bench-2026-11-28/`. One model and one tool server, so the numbers are a first reading.
+
+| Rule in the core | Why | Measured |
+|---|---|---|
+| A bot always sees the full description of every tool it may use | With descriptions hidden behind a search step, Jinbei guessed arguments | Hidden: 28 model turns, 10 of 17 calls failed. Shown: 2-3 turns, 0 failed |
+| The bot file lists the tools the bot may use (`maestro.mcp: { server: [tools] }`); nothing else is declared or reachable | Tool descriptions are sent on every model turn | 14 tools 34.6 KB, 7 tools 23.9 KB per request; small task 35k → 27k tokens read |
+| Tool calls run one at a time by default; scripts (code mode) are opt-in | Same task, same input, 5 runs each | Small task: direct 24 s and 141-145 MB, code mode 40 s and 195-200 MB. Large task: no difference in time |
+| A bot hands off by writing `@bot` in its reply; no tool call | The model sometimes wrote "message sent" without calling the hand-off tool | Tool: 5 of 9 hand-offs arrived, 4 model turns. Reply: 10 of 10, 2 turns |
+| MCP tools that change data run in order; read-only tools (`readOnlyHint`) run in parallel | Four writes to one scene at once were rejected ("changed too often") and overlapped, then the bot spent turns repairing | Large task: 12 → 5 model turns, 252k → 90k tokens read, 128 s → 79 s (medians) |
+| An identical call that failed twice is not run a third time; a run stops after 3 turns of only failed calls | One run repeated the same failing calls 36 times | Covered by `core/bench/faux-handoff.ts` |
+| Every failed tool call keeps its error text in the run record | The cause of failures could not be found without it | — |
+
+Not built yet: the in-order rule holds inside one bot's run; two bots writing to the same server at once are not yet queued.
