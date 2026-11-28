@@ -1,6 +1,6 @@
 // Benchmark: Nami reads job postings, hands skill gaps to Jinbei, who builds a
 // learning-plan scene in Excalidraw+ over MCP. Compares direct vs codemode exposure.
-// Run: node --expose-gc core/bench/learning.ts --mode direct|codemode [--model provider/id]
+// Run: node --expose-gc core/bench/learning.ts --mode direct|codemode|hybrid [--model provider/id]
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -31,7 +31,7 @@ function argValue(flag: string): string | undefined {
 }
 
 const mode = argValue("--mode");
-if (mode !== "direct" && mode !== "codemode") throw new Error("want --mode direct|codemode");
+if (mode !== "direct" && mode !== "codemode" && mode !== "hybrid") throw new Error("want --mode direct|codemode|hybrid");
 const modelSpec = argValue("--model") ?? "relay/claude-sonnet-5-5";
 const [provider, ...rest] = modelSpec.split("/");
 const modelId = rest.join("/");

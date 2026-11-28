@@ -54,6 +54,7 @@ export type RunMetrics = {
   // Bytes of tool declarations (JSON of name+description+parameters) sent with
   // the session's first request. Set on the first run of the session.
   declBytes?: number;
+  declTools?: string[];
 };
 
 export const HOP_LIMIT = 8;
@@ -67,6 +68,7 @@ type BotThreadState = {
   currentRun?: RunMetrics;
   toolOrder: Map<string, ToolCallMetrics>;
   declBytes?: number;
+  declSnapshot?: { name?: string; description?: string }[];
 };
 
 type ThreadState = {
@@ -85,7 +87,7 @@ export type CoreOptions = {
   bots: Bot[];
   runDir: string;
   mcpServers?: Record<string, McpServerConfig>;
-  mcpExposure?: "direct" | "codemode";
+  mcpExposure?: "direct" | "codemode" | "hybrid";
   // server -> tool names exposed; every other tool of that server stays hidden.
   mcpAllow?: Record<string, string[]>;
 };
@@ -98,7 +100,7 @@ export class Core {
   readonly threads = new Map<string, ThreadState>();
   readonly runs: RunMetrics[] = [];
   readonly mcpServers: Record<string, McpServerConfig>;
-  readonly mcpExposure: "direct" | "codemode";
+  readonly mcpExposure: "direct" | "codemode" | "hybrid";
   readonly mcpAllow: Record<string, string[]>;
   private draftCount = 0;
   private readonly draftsPath: string;
@@ -231,10 +233,11 @@ export class Core {
       run.error = err instanceof Error ? err.message : String(err);
     }
     run.endMs = Date.now();
-    if (st.declBytes === undefined) {
-      st.declBytes = declarationBytes(session);
-      run.declBytes = st.declBytes;
-    }
+    // Transcript scan only as a fallback when no provider request was observed;
+    // in codemode "only" mode it overcounts because hidden declarations stay in the transcript.
+    if (st.declBytes === undefined) st.declBytes = declarationBytes(session);
+    run.declBytes = st.declBytes;
+    run.declTools = st.declSnapshot?.map((t) => t.name ?? "?");
     const last = session.messages.findLast((m) => m.role === "assistant");
     if (last && last.role === "assistant") {
       if (last.stopReason === "error") run.error = last.errorMessage ?? "model error";
@@ -266,21 +269,44 @@ export class Core {
     const agentDir = join(this.runDir, "agent");
     mkdirSync(agentDir, { recursive: true });
 
-    const ext = (pi: { on: (event: string, handler: (e: unknown) => void) => void }) =>
+    const ext = (pi: { on: (event: string, handler: (e: unknown) => void) => void }) => {
       pi.on("before_agent_start", (e) => {
         (e as { systemPromptOptions: { customPrompt: string } }).systemPromptOptions.customPrompt =
           bot.instructions;
       });
+      pi.on("before_provider_request", (e) => {
+        if (st.declBytes !== undefined) return;
+        const payload = (e as { payload?: { tools?: unknown[] } }).payload;
+        if (!payload?.tools) return;
+        let bytes = 0;
+        const snapshot: { name?: string; description?: string }[] = [];
+        for (const raw of payload.tools) {
+          const tool = raw as { name?: string; description?: string; input_schema?: unknown; parameters?: unknown };
+          bytes += Buffer.byteLength(JSON.stringify({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.input_schema ?? tool.parameters,
+          }));
+          snapshot.push({ name: tool.name, description: tool.description });
+        }
+        st.declBytes = bytes;
+        st.declSnapshot = snapshot;
+      });
+    };
     const factories: unknown[] = [ext];
 
     // MCP servers for this bot. Server exposure stays "hidden" and the allow-listed
-    // tools override it with the bench's exposure, so everything else is unreachable.
+    // tools override it with "direct", so non-allow-listed tools are unreachable in
+    // every mode. In codemode and hybrid the codemode extension then decides how the
+    // model sees them: "only" hides the direct declarations and inlines every callable
+    // tool's full declaration into the codemode description, "on" keeps the direct
+    // declarations and adds a script-call line to each.
     if (bot.mcp.length > 0) {
       const servers = bot.mcp.map((name) => {
         const config = this.mcpServers[name];
         if (!config) throw new Error(`bot ${botId}: unknown MCP server "${name}"`);
         const allowed = this.mcpAllow[name] ?? [];
-        const toolExposure = Object.fromEntries(allowed.map((tool) => [tool, this.mcpExposure]));
+        const toolExposure = Object.fromEntries(allowed.map((tool) => [tool, "direct" as const]));
         return {
           name,
           config: { ...config, exposure: "hidden" as const, toolExposure },
@@ -290,11 +316,18 @@ export class Core {
       });
       factories.push(
         createMcpExtension({
-          loadConfig: () => ({ servers, errors: [], autoEnableCodemode: this.mcpExposure === "codemode" }),
+          loadConfig: () => ({ servers, errors: [], autoEnableCodemode: false }),
           logPath: join(this.runDir, "mcp.log"),
         }),
       );
-      if (this.mcpExposure === "codemode") factories.push(createCodemodeExtension());
+      if (this.mcpExposure !== "direct") {
+        factories.push(
+          createCodemodeExtension({
+            mode: this.mcpExposure === "codemode" ? "only" : "on",
+            inlineBudget: Number.MAX_SAFE_INTEGER,
+          }),
+        );
+      }
     }
 
     const resourceLoader = new DefaultResourceLoader({
@@ -348,6 +381,11 @@ export class Core {
       settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
     });
     await session.bindExtensions({});
+    // codemode registers defaultActive: false; nothing else activates it once MCP
+    // tools are direct, so activate it explicitly.
+    if (bot.mcp.length > 0 && this.mcpExposure !== "direct") {
+      session.setActiveToolsByName([...session.getActiveToolNames(), "codemode"]);
+    }
 
     session.subscribe((ev) => {
       const run = st.currentRun;
